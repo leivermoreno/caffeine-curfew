@@ -270,7 +270,13 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   // optional body weight scales the bedtime limit: the same mg in a smaller body is a higher concentration
   function bedLimit() { return state.weight ? Math.round(state.limit * state.weight / REF_KG) : state.limit; }
   // EFSA: single doses up to ~3 mg/kg (200 mg) and up to ~5.7 mg/kg a day (400 mg) raise no concerns in healthy adults
-  function singleMax() { return state.weight ? Math.min(200, Math.round(state.weight * 3 / 5) * 5) : 0; }
+  function singleMax() { return state.weight ? Math.min(200, Math.floor(state.weight * 3 / 5) * 5) : 0; }
+  // daily mg still available, not counting drink `excl` (the one being edited)
+  function dayLeft(excl) {
+    var s = 0;
+    state.doses.forEach(function (d, i) { if (i !== excl) s += d.mg; });
+    return dayMax() - s;
+  }
   function dayMax() { return state.weight ? Math.min(DAYMAX, Math.round(state.weight * 5.7 / 5) * 5) : DAYMAX; }
 
   var $ = function (id) { return document.getElementById(id); };
@@ -326,7 +332,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     var bed = bedHour(), best = { t: bed, v: level(bed, -1, false) };
     for (var s = bed + 1 / 12; s <= bed + SLEEPWIN + 1e-9; s += 1 / 12) {
       var v = level(s, -1, false);
-      if (v > best.v + 0.05) best = { t: s, v: v };
+      if (v > best.v) best = { t: s, v: v };
     }
     return best;
   }
@@ -399,7 +405,9 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     o.push('<path d="' + path + '" fill="none" stroke="var(--caff)" stroke-width="2" stroke-linejoin="round"/>');
 
     var csr = activeI >= 0 ? !!state.doses[activeI].sr : false, cvals = [];
-    for (var t2 = XMIN; t2 <= bed + 1e-9; t2 += 1 / 6) cvals.push([t2, maxAt(t2, csr, activeI)]);
+    var ccap = Math.min(SMAX || Infinity, dayLeft(activeI));
+    for (var ci2 = 0, t2 = XMIN; t2 <= bed + 1e-9; ci2++, t2 = XMIN + ci2 / 6) cvals.push([t2, Math.min(ccap, maxAt(t2, csr, activeI))]);
+    if (cvals[cvals.length - 1][0] < bed - 1e-6) cvals.push([bed, Math.min(ccap, maxAt(bed, csr, activeI))]);
     var anyRoom = cvals.some(function (p) { return p[1] > 0; });
     if (anyRoom) {
       var c = cvals.map(function (p, ci) { return (ci ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(Math.max(-ymax * 0.1, Math.min(ymax * 1.5, p[1]))).toFixed(1); });
@@ -439,8 +447,8 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     // scrubber: stats for the hour under your finger
     if (scrub !== null && !sheet) {
       var st = Math.min(xmax, Math.max(XMIN, scrub)), sx = X(st), sv = level(st, -1, false);
-      var rows = [], dayLeft = DMAX - state.doses.reduce(function (a, dd) { return a + dd.mg; }, 0);
-      var cap = Math.max(0, Math.min(SMAX || Infinity, dayLeft));
+      var rows = [];
+      var cap = Math.max(0, Math.min(SMAX || Infinity, dayLeft(-1)));
       if (st < bed) {
         rows.push(['Can still add', maxAt(st, false, -1)]);
         if (state.presets.some(function (p) { return p.sr; })) rows.push(['As SR pill', maxAt(st, true, -1)]);
@@ -456,7 +464,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       rows.forEach(function (r, ri) {
         var mv = r[1] <= 0 ? 0 : Math.min(Math.floor(r[1] / 5) * 5, Math.floor(cap / 5) * 5), yy = by + 51 + ri * 17;
         o.push('<text x="' + (bx + 10) + '" y="' + yy + '">' + r[0] + '</text>');
-        o.push('<text x="' + (bx + bw - 10) + '" y="' + yy + '" text-anchor="end" style="fill:var(--' + (mv > 0 ? 'good' : 'bad') + ');font-weight:600">' + (mv >= MAXDOSE ? MAXDOSE + '+' : mv) + ' mg</text>');
+        o.push('<text x="' + (bx + bw - 10) + '" y="' + yy + '" text-anchor="end" style="fill:var(--' + (mv > 0 ? 'good' : 'bad') + ');font-weight:600">' + mv + ' mg</text>');
       });
       o.push('</g>');
     }
@@ -464,7 +472,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     svg.innerHTML = o.join('');
 
     $('bedMg').textContent = Math.round(bedMg);
-    $('bedLbl').textContent = pk.t > bed + 0.01 ? 'mg peak at ' + fmt(pk.t) + ', after bed' : 'mg left at ' + fmt(bed);
+    $('bedLbl').textContent = pk.t > bed + 0.01 && pk.v - level(bed, -1, false) >= 0.5 ? 'mg peak at ' + fmt(pk.t) + ', after bed' : 'mg left at ' + fmt(bed);
     $('bedVal').textContent = fmt(bed);
     var vd = $('verdict');
     vd.className = 'verdict ' + cls;
@@ -476,11 +484,13 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     var hint = $('hint'), left = LIMIT - bedMg;
     if (left <= 0) {
       hint.textContent = 'Over your ' + LIMIT + ' mg limit by ' + Math.round(-left) + ' mg. Move a drink earlier or shrink it.';
+    } else if (dayLeft(-1) < 95 || (SMAX && SMAX < 95)) {
+      hint.textContent = dayLeft(-1) < 95 ? 'Another coffee would put you over ' + DMAX + ' mg today.' : 'A coffee is over your ' + SMAX + ' mg per-dose guideline.';
     } else if (maxAt(bed, false, -1) >= 95) {
       hint.textContent = 'One more coffee fits any time before bed.';
     } else {
       var latest = null;
-      for (var lt = bed; lt >= XMIN; lt -= 1 / 12) if (maxAt(lt, false, -1) >= 95) { latest = lt; break; }
+      for (var li2 = 0, lt = bed; lt >= XMIN - 1e-9; li2++, lt = bed - li2 / 12) if (maxAt(lt, false, -1) >= 95) { latest = Math.max(XMIN, lt); break; }
       hint.textContent = latest !== null ? 'Last call for one more coffee: ' + fmt(latest) + '.' : 'No room for another coffee today.';
     }
 
@@ -503,12 +513,14 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     $('sheetMg').textContent = d.mg;
     $('srToggle').setAttribute('aria-pressed', String(!!d.sr));
     range.value = d.mg;
-    var sm = singleMax(), okMax = Math.min(mx, sm || MAXDOSE);
+    var raw = maxAt(d.t, d.sr, sheet.i), sm = singleMax(), dl = dayLeft(sheet.i);
+    var okMax = Math.max(0, Math.floor(Math.min(raw, sm || MAXDOSE, dl, MAXDOSE) / 5) * 5);
     range.style.setProperty('--max', Math.max(0, Math.min(100, (okMax - 5) / (MAXDOSE - 5) * 100)) + '%');
     var note = $('sheetNote');
-    if (mx <= 0) { note.className = 'bad'; note.textContent = 'No room at this hour'; }
-    else if (d.mg > mx) { note.className = 'bad'; note.textContent = (d.mg - mx) + ' mg over the max here'; }
+    if (raw <= 0) { note.className = 'bad'; note.textContent = 'No room at this hour'; }
+    else if (d.mg > raw + 1e-9) { note.className = 'bad'; note.textContent = Math.ceil(d.mg - raw) + ' mg over the max here'; }
     else if (sm && d.mg > sm) { note.className = 'bad'; note.textContent = 'Over ' + sm + ' mg per dose'; }
+    else if (d.mg > dl) { note.className = 'bad'; note.textContent = 'Over your ' + dayMax() + ' mg day'; }
     else { note.className = ''; note.textContent = 'Max here: ' + okMax + ' mg'; }
     $('sheetSecondary').textContent = sheet.isNew ? 'Cancel' : 'Remove';
     $('sheetPrimary').textContent = sheet.isNew ? 'Add' : 'Done';
