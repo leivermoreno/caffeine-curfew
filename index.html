@@ -113,8 +113,25 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 .setbtn b { font-weight: 600; flex: none; }
 .setbtn span { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .setbtn i { flex: none; font-style: normal; color: var(--muted); transition: transform .15s; }
-.setbtn[aria-expanded="true"] i { transform: rotate(180deg); }
-.controls { display: flex; flex-direction: column; gap: 6px; max-height: 48vh; overflow-y: auto; }
+/* settings: full-height panel that slides in from the right */
+.scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .55); opacity: 0; pointer-events: none; transition: opacity .25s ease; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.controls {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 21; width: min(420px, 100%);
+  background: var(--bg); border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0, 0, 0, .35);
+  display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px));
+  transform: translateX(100%); visibility: hidden;
+  transition: transform .3s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .3s;
+}
+.controls.open { transform: none; visibility: visible; transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
+.controls.dragging { transition: none; }
+@media (prefers-reduced-motion: reduce) { .controls, .controls.open, .scrim { transition: none; } }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 4px; }
+.panel-head h2 { margin: 0; font-family: var(--display); font-size: 20px; font-weight: 600; }
+.done { min-height: 36px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); font-weight: 600; font-size: 13px; }
+.sec { margin: 10px 0 0; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .drinks { display: flex; flex-direction: column; gap: 6px; }
 .drinks-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--muted); padding-top: 4px; }
 .drinks-head button { min-height: 32px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
@@ -193,9 +210,12 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 
   <p class="tip">Slide across the chart to check any hour. Press and hold to add a drink. Tap a dot to edit it.</p>
 
-  <button type="button" class="setbtn" id="setBtn" aria-expanded="false" aria-controls="controls"><b>Settings</b><span id="setSum"></span><i aria-hidden="true">▾</i></button>
+  <button type="button" class="setbtn" id="setBtn" aria-expanded="false" aria-controls="controls"><b>Settings</b><span id="setSum"></span><i aria-hidden="true">›</i></button>
 
-  <div class="controls" id="controls" hidden>
+  <div class="scrim" id="scrim"></div>
+  <aside class="controls" id="controls" role="dialog" aria-modal="true" aria-labelledby="setTitle" inert>
+    <div class="panel-head"><h2 id="setTitle">Settings</h2><button type="button" class="done" id="setDone">Done</button></div>
+    <p class="sec">Sleep</p>
     <div class="row"><span id="lblBed">Bedtime</span>
       <div class="seg" role="group" aria-labelledby="lblBed">
         <button type="button" class="step" id="bedMinus" aria-label="Bedtime 15 minutes earlier">−</button>
@@ -218,6 +238,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
         <button type="button" data-v="10" id="hlVery">V. slow</button>
       </div>
     </div>
+    <p class="sec">You</p>
     <div class="row"><span id="lblW">Weight</span>
       <div class="wrow">
         <input id="weight" type="number" inputmode="decimal" placeholder="Optional" aria-labelledby="lblW">
@@ -228,11 +249,11 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       </div>
     </div>
     <div class="drinks">
-      <div class="drinks-head"><span>Drink buttons</span><button type="button" id="presetAdd">+ Add drink</button></div>
+      <div class="drinks-head"><span class="sec">Drink buttons</span><button type="button" id="presetAdd">+ Add drink</button></div>
       <div class="prow lbls" aria-hidden="true"><span>Name</span><span>mg</span><span>SR</span><span></span></div>
       <div class="drinks" id="presetList"></div>
     </div>
-  </div>
+  </aside>
 </div>
 
 <script>
@@ -765,10 +786,41 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     state.wunit = b.getAttribute('data-u'); save(); showWeight(); render();
   });
 
-  $('setBtn').addEventListener('click', function () {
-    var c = $('controls');
-    c.hidden = !c.hidden;
-    this.setAttribute('aria-expanded', String(!c.hidden));
+  var panel = $('controls'), scrim = $('scrim'), setBtn = $('setBtn');
+  function setPanel(open) {
+    panel.classList.toggle('open', open);
+    scrim.classList.toggle('open', open);
+    if (open) panel.removeAttribute('inert'); else panel.setAttribute('inert', '');
+    panel.style.transform = '';
+    setBtn.setAttribute('aria-expanded', String(open));
+    if (open) { panel.scrollTop = 0; setTimeout(function () { $('setDone').focus({ preventScroll: true }); }, 60); }
+    else setBtn.focus({ preventScroll: true });
+  }
+  setBtn.addEventListener('click', function () { setPanel(true); });
+  $('setDone').addEventListener('click', function () { setPanel(false); });
+  scrim.addEventListener('click', function () { setPanel(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && panel.classList.contains('open')) setPanel(false); });
+  // swipe the panel back to the right to close it
+  var sw = null;
+  panel.addEventListener('touchstart', function (e) {
+    if (e.touches.length !== 1) return;
+    sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, horiz: null };
+  }, { passive: true });
+  panel.addEventListener('touchmove', function (e) {
+    if (!sw) return;
+    var dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+    if (sw.horiz === null && Math.abs(dx) + Math.abs(dy) > 8) sw.horiz = Math.abs(dx) > Math.abs(dy) * 1.3;
+    if (!sw.horiz) return;
+    sw.dx = Math.max(0, dx);
+    panel.classList.add('dragging');
+    panel.style.transform = 'translateX(' + sw.dx + 'px)';
+  }, { passive: true });
+  panel.addEventListener('touchend', function () {
+    if (!sw) return;
+    panel.classList.remove('dragging');
+    var close = sw.horiz && sw.dx > 70;
+    sw = null;
+    if (close) setPanel(false); else panel.style.transform = '';
   });
 
   var infoBtn = $('infoBtn'), info = $('info');
