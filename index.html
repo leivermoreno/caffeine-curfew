@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#140E0A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Caffeine">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23140E0A'/%3E%3Cg transform='rotate(-28 16 16)'%3E%3Cellipse cx='16' cy='16' rx='8' ry='11' fill='%23B5763F'/%3E%3Cpath d='M16 6 C20 11 12 21 16 26' stroke='%23140E0A' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<title>Caffeine Curfew</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: one phone screen, no scrolling. Readout on top, the chart takes all spare height, three button rows at the bottom. Drinks are added by press-and-hold on the chart. */
+:root {
+  /* single dark look by choice: espresso ground, crema ink, latte curve */
+  color-scheme: dark;
+  --bg: #140E0A;
+  --surface: #1F1611;
+  --ink: #F4E8D8;
+  --muted: #A8927D;
+  --line: #3A2B21;
+  --caff: #D9A066;
+  --caff-fill: rgba(217, 160, 102, .15);
+  --bean: #B5763F;
+  --night: #A9B0EE;
+  --night-fill: rgba(169, 176, 238, .09);
+  --good: #7FCB9C;
+  --warn: #E8B45A;
+  --bad: #F2836F;
+  --display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--body); font-size: 14px; line-height: 1.4;
+  display: flex; flex-direction: column;
+  padding-block: 10px 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow-x: hidden;
+}
+button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.wrap { flex: 1; min-height: 0; width: 100%; max-width: 680px; max-height: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+h1 { font-family: var(--display); font-size: 14px; font-weight: 600; margin: 0; letter-spacing: .02em; color: var(--muted); }
+.linkbtn { border: none; background: none; color: var(--night); font-weight: 500; padding: 4px 0; min-height: 28px; }
+.big { font-family: var(--display); font-weight: 600; font-size: clamp(34px, 10vw, 46px); line-height: 1; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.big small { font-family: var(--body); font-size: 14px; font-weight: 400; color: var(--muted); }
+.status { margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 2px 10px; font-variant-numeric: tabular-nums; }
+.verdict { font-weight: 600; }
+.good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+.total { color: var(--muted); }
+.total.warn { color: var(--warn); font-weight: 600; }
+.hint { color: var(--muted); margin: 0; min-height: 1.4em; }
+
+.chart { position: relative; flex: 1; min-height: 200px; background: var(--surface); border-radius: 14px; overflow: hidden; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+svg text { font-family: var(--body); font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+svg .lbl { fill: var(--ink); font-weight: 600; font-size: 12px; }
+svg .nightlbl { fill: var(--night); font-weight: 600; }
+.handle { cursor: grab; outline: none; }
+.handle:focus-visible .ring { stroke: var(--ink); }
+
+.press { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; border: 2px solid var(--caff); background: var(--caff-fill); pointer-events: none; transform: scale(.15); animation: press .45s ease-out forwards; }
+@keyframes press { to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .press { animation-duration: .01s; } }
+
+.sheet { position: absolute; left: 8px; right: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); display: flex; flex-direction: column; gap: 8px; }
+.sheet.at-top { top: 8px; } .sheet.at-bottom { bottom: 8px; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.when { display: flex; align-items: center; gap: 2px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.when span { min-width: 68px; text-align: center; }
+.nudge { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font-size: 16px; line-height: 1; }
+.amount { font-family: var(--display); font-weight: 600; font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; }
+.amount small { font-family: var(--body); font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 3px; }
+input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 34px; margin: 0; background: transparent; --max: 50%; touch-action: none; }
+input[type="range"]::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: linear-gradient(to right, var(--good) 0, var(--good) var(--max), var(--bad) var(--max), var(--bad) 100%); }
+input[type="range"]::-moz-range-track { height: 8px; border-radius: 4px; background: linear-gradient(to right, var(--good) 0, var(--good) var(--max), var(--bad) var(--max), var(--bad) 100%); }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; margin-top: -11px; border-radius: 50%; background: var(--caff); border: 3px solid var(--surface); box-shadow: 0 1px 5px rgba(0, 0, 0, .3); }
+input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: var(--caff); border: 3px solid var(--surface); box-shadow: 0 1px 5px rgba(0, 0, 0, .3); }
+.chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chips button { flex: 1 0 auto; min-width: 56px; max-width: 96px; min-height: 34px; padding: 2px 6px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.chips button b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chips button em { font-style: normal; color: var(--caff); font-weight: 600; }
+.srt { min-height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; color: var(--muted); }
+.srt[aria-pressed="true"] { background: var(--caff); border-color: var(--caff); color: var(--bg); font-weight: 600; }
+.sheet-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sheet-foot p { margin: 0; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 0; }
+.sheet-foot p.bad { color: var(--bad); font-weight: 600; }
+.acts { display: flex; gap: 6px; flex: none; }
+.acts button { min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
+.acts .primary { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 600; }
+
+.info { position: absolute; inset: 0; background: var(--surface); padding: 14px 16px; overflow-y: auto; font-size: 13px; line-height: 1.5; user-select: text; -webkit-user-select: text; }
+.info p { margin: 0 0 8px; }
+.info strong { font-weight: 600; }
+
+.tip { margin: 0; color: var(--muted); font-size: 12.5px; }
+.setbtn { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font-size: 13px; text-align: left; }
+.setbtn b { font-weight: 600; flex: none; }
+.setbtn span { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.setbtn i { flex: none; font-style: normal; color: var(--muted); transition: transform .15s; }
+.setbtn[aria-expanded="true"] i { transform: rotate(180deg); }
+.controls { display: flex; flex-direction: column; gap: 6px; max-height: 48vh; overflow-y: auto; }
+.drinks { display: flex; flex-direction: column; gap: 6px; }
+.drinks-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--muted); padding-top: 4px; }
+.drinks-head button { min-height: 32px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
+.drinks-head button:disabled { opacity: .4; }
+.prow { display: grid; grid-template-columns: minmax(0, 1fr) 70px 44px 34px; gap: 6px; align-items: center; }
+.prow.lbls span { font-size: 11px; color: var(--muted); }
+.prow input { font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 0 8px; min-height: 38px; width: 100%; min-width: 0; }
+.prow .psr { min-height: 38px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; color: var(--muted); }
+.prow .psr[aria-pressed="true"] { background: var(--caff); border-color: var(--caff); color: var(--bg); font-weight: 600; }
+.prow .pdel { min-height: 38px; border: none; background: none; color: var(--muted); font-size: 18px; }
+.row { display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: center; gap: 10px; }
+.row > span { font-size: 12.5px; color: var(--muted); }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.seg button { flex: 1; min-width: 0; min-height: 38px; padding: 0 4px; border: none; background: none; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); font-weight: 600; }
+.seg .val { flex: 2; display: flex; align-items: center; justify-content: center; font-weight: 600; font-variant-numeric: tabular-nums; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.seg .step { font-size: 18px; color: var(--ink); }
+:focus-visible { outline: 2px solid var(--night); outline-offset: -2px; }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>Caffeine Curfew</h1>
+    <button type="button" class="linkbtn" id="infoBtn" aria-expanded="false" aria-controls="info">How it works</button>
+  </div>
+
+  <div aria-live="polite">
+    <div class="big"><span id="bedMg">0</span><small id="bedLbl">mg left at 11:00 pm</small></div>
+    <p class="status"><span class="verdict" id="verdict"></span><span class="total" id="total"></span></p>
+    <p class="hint" id="hint"></p>
+  </div>
+
+  <div class="chart" id="chartBox">
+    <svg id="chart" role="group" aria-label="Caffeine in your body through the day"></svg>
+
+    <div class="sheet at-top" id="sheet" hidden>
+      <div class="sheet-head">
+        <div class="when">
+          <button type="button" class="nudge" id="tMinus" aria-label="5 minutes earlier">‹</button>
+          <span id="sheetTime">2:00 pm</span>
+          <button type="button" class="nudge" id="tPlus" aria-label="5 minutes later">›</button>
+        </div>
+        <button type="button" class="srt" id="srToggle" aria-pressed="false" title="Sustained release">SR</button>
+        <div class="amount"><span id="sheetMg">95</span><small>mg</small></div>
+      </div>
+      <input type="range" id="mgRange" min="5" max="400" step="5" value="95" aria-label="Caffeine in this drink, mg">
+      <div class="chips" id="chips"></div>
+      <div class="sheet-foot">
+        <p id="sheetNote"></p>
+        <div class="acts">
+          <button type="button" id="sheetSecondary">Cancel</button>
+          <button type="button" class="primary" id="sheetPrimary">Add</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="info" id="info" hidden>
+      <p><strong>The curve</strong> is caffeine in your body. Each dot is a drink: sideways is when, up and down is how much. The starting two are examples.</p>
+      <p><strong>Add a drink</strong> by pressing and holding the chart at the hour you had it, then set the amount with the slider. Tap a dot to edit or remove it.</p>
+      <p><strong>Check any hour</strong> by sliding your finger across the chart. The card shows how much caffeine is in your body then, and how much you could still add at that hour and sleep well. Tap the line to hide it.</p>
+      <p><strong>The dashed line</strong> is the biggest drink you can still add at each hour and sleep well. It drops as bedtime gets closer.</p>
+      <p><strong>Sensitivity</strong> sets how much caffeine you can carry into bed: 25 mg if it hits you hard, 50 mg for most people, 100 mg if coffee after dinner never bothers you. These are rules of thumb, not medical limits.</p>
+      <p><strong>Clearance</strong> is how fast your body removes it. Half is gone in about 5 hours for most adults (fast 3.5 h, slow 7 h, very slow 10 h). Smokers clear it faster. Pregnancy, birth control pills and some medications make it much slower.</p>
+      <p><strong>Sustained-release pills</strong> (the SR toggle) follow studies of extended-release caffeine: about a quarter hits right away and the rest absorbs over 6 to 8 hours. It peaks around 4 hours after you take it, at roughly half the height of the same dose as coffee, and the tail lasts longer, so an afternoon pill can still be releasing at night. Brands differ, and Genius doesn't publish its exact curve.</p>
+      <p><strong>The bedtime check</strong> covers your first 3 hours of sleep, not only the moment you lie down, so a pill still releasing after bed counts.</p>
+      <p><strong>Drink buttons</strong> can be renamed, resized or marked SR in Settings.</p>
+      <p><strong>Daily total</strong> is checked against 400 mg, the usual upper guideline for healthy adults.</p>
+      <p>Things this skips: caffeine takes 30 to 60 minutes to peak, decaf still has 2 to 15 mg, and chocolate and cola count too. Even if you fall asleep fine, caffeine at bedtime can cut deep sleep.</p>
+    </div>
+  </div>
+
+  <p class="tip">Slide across the chart to check any hour. Press and hold to add a drink. Tap a dot to edit it.</p>
+
+  <button type="button" class="setbtn" id="setBtn" aria-expanded="false" aria-controls="controls"><b>Settings</b><span id="setSum"></span><i aria-hidden="true">▾</i></button>
+
+  <div class="controls" id="controls" hidden>
+    <div class="row"><span id="lblBed">Bedtime</span>
+      <div class="seg" role="group" aria-labelledby="lblBed">
+        <button type="button" class="step" id="bedMinus" aria-label="Bedtime 15 minutes earlier">−</button>
+        <span class="val" id="bedVal">11:00 pm</span>
+        <button type="button" class="step" id="bedPlus" aria-label="Bedtime 15 minutes later">+</button>
+      </div>
+    </div>
+    <div class="row"><span id="lblSens">Sensitivity</span>
+      <div class="seg" id="sens" role="group" aria-labelledby="lblSens">
+        <button type="button" data-v="25" id="sensLow">Sensitive</button>
+        <button type="button" data-v="50" id="sensMid">Typical</button>
+        <button type="button" data-v="100" id="sensHigh">Tolerant</button>
+      </div>
+    </div>
+    <div class="row"><span id="lblHl">Clearance</span>
+      <div class="seg" id="hl" role="group" aria-labelledby="lblHl">
+        <button type="button" data-v="3.5" id="hlFast">Fast</button>
+        <button type="button" data-v="5" id="hlAvg">Average</button>
+        <button type="button" data-v="7" id="hlSlow">Slow</button>
+        <button type="button" data-v="10" id="hlVery">V. slow</button>
+      </div>
+    </div>
+    <div class="drinks">
+      <div class="drinks-head"><span>Drink buttons</span><button type="button" id="presetAdd">+ Add drink</button></div>
+      <div class="prow lbls" aria-hidden="true"><span>Name</span><span>mg</span><span>SR</span><span></span></div>
+      <div class="drinks" id="presetList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var XMIN = 5, MAXDOSE = 400, DAYMAX = 400, MAXDRINKS = 8, MAXPRESETS = 8, KEY = 'caffeine-curfew-v1';
+  // first hours of sleep that must stay under the limit (catches pills still releasing after bed)
+  var SLEEPWIN = 3;
+  // sustained release: 25% absorbed at once, 75% absorbed gradually (rate 0.3/h, ~90% in by 7-8 h).
+  // Fitted to 200-250 mg extended-release caffeine studies: peak ~4 h after the dose at about half the immediate-release peak.
+  var SR_FAST = 0.25, SR_KA = 0.3;
+  var DEFAULT_PRESETS = [
+    { name: 'Tea', mg: 45, sr: false },
+    { name: 'Espresso', mg: 65, sr: false },
+    { name: 'Coffee', mg: 95, sr: false },
+    { name: 'Energy', mg: 160, sr: false },
+    { name: 'Genius', mg: 100, sr: true }
+  ];
+  var state = { bed: '23:00', hl: 5, limit: 50, doses: [{ t: 8, mg: 95 }, { t: 14, mg: 95 }] };
+  try {
+    var saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (saved && Array.isArray(saved.doses) && typeof saved.bed === 'string') {
+      state = saved;
+      if (!state.limit) state.limit = 50;
+      if (!state.hl) state.hl = 5;
+    }
+  } catch (e) {}
+  if (!Array.isArray(state.presets)) state.presets = DEFAULT_PRESETS.map(function (p) { return { name: p.name, mg: p.mg, sr: p.sr }; });
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var svg = $('chart'), box = $('chartBox'), sheetEl = $('sheet'), range = $('mgRange');
+  var drag = null, press = null, sheet = null, scrub = null, scrubbing = null, frozenYmax = null, G = {};
+
+  function bedHour() {
+    var p = state.bed.split(':'), h = (+p[0]) + (+p[1]) / 60;
+    if (isNaN(h)) h = 23;
+    if (h < 12) h += 24;
+    return h;
+  }
+  function fmt(t) {
+    var m = Math.round(t * 60), h = Math.floor(m / 60) % 24, mm = m % 60;
+    var ap = h < 12 ? 'am' : 'pm', h12 = h % 12 === 0 ? 12 : h % 12;
+    return h12 + ':' + (mm < 10 ? '0' : '') + mm + ' ' + ap;
+  }
+  function fmtShort(h) { h = h % 24; return (h % 12 === 0 ? 12 : h % 12) + (h < 12 ? 'a' : 'p'); }
+  // caffeine in the body per 1 mg taken, dt hours after taking it
+  function unit(sr, dt) {
+    if (dt < 0) return 0;
+    var k = Math.LN2 / state.hl, e = Math.exp(-k * dt);
+    if (!sr) return e;
+    return SR_FAST * e + (1 - SR_FAST) * SR_KA / (SR_KA - k) * (e - Math.exp(-SR_KA * dt));
+  }
+  function level(t, excl, strict) {
+    var s = 0;
+    for (var i = 0; i < state.doses.length; i++) {
+      var d = state.doses[i];
+      if (i === excl) continue;
+      if (strict ? d.t < t : d.t <= t) s += d.mg * unit(d.sr, t - d.t);
+    }
+    return s;
+  }
+  function snapT(t, bed) { return Math.min(bed, Math.max(XMIN, Math.round(t * 12) / 12)); }
+  function snapMg(v) { return Math.min(MAXDOSE, Math.max(5, Math.round(v / 5) * 5)); }
+  function nowHour() {
+    var n = new Date(), h = n.getHours() + n.getMinutes() / 60;
+    return h < XMIN ? h + 24 : h;
+  }
+  // biggest dose at time t0 that keeps the whole first stretch of sleep under the limit
+  function maxAt(t0, sr, excl) {
+    var bed = bedHour(), m = Infinity;
+    for (var s = bed; s <= bed + SLEEPWIN + 1e-9; s += 1 / 6) {
+      var u = unit(sr, s - t0);
+      if (u < 1e-6) continue;
+      var r = (state.limit - level(s, excl, false)) / u;
+      if (r < m) m = r;
+    }
+    return m;
+  }
+  function sleepPeak() {
+    var bed = bedHour(), best = { t: bed, v: level(bed, -1, false) };
+    for (var s = bed + 1 / 12; s <= bed + SLEEPWIN + 1e-9; s += 1 / 12) {
+      var v = level(s, -1, false);
+      if (v > best.v + 0.05) best = { t: s, v: v };
+    }
+    return best;
+  }
+  function maxFor(i) {
+    var d = state.doses[i], m = maxAt(d.t, d.sr, i);
+    return m <= 0 ? 0 : Math.min(MAXDOSE, Math.floor(m / 5) * 5);
+  }
+
+  function render() {
+    var LIMIT = state.limit, bed = bedHour(), xmax = bed + SLEEPWIN;
+    state.doses.forEach(function (d) { d.t = snapT(d.t, bed); });
+    var activeI = drag ? drag.i : sheet ? sheet.i : -1;
+
+    var times = [];
+    for (var g = XMIN; g <= xmax + 1e-9; g += 1 / 6) times.push(g);
+    var pts = [], peak = 0;
+    var doseTimes = state.doses.map(function (d) { return d.t; }).sort(function (a, b) { return a - b; });
+    var di = 0;
+    times.forEach(function (t) {
+      while (di < doseTimes.length && doseTimes[di] <= t) {
+        var dt = doseTimes[di];
+        pts.push([dt, level(dt, -1, true)]); pts.push([dt, level(dt, -1, false)]);
+        di++;
+      }
+      pts.push([t, level(t, -1, false)]);
+    });
+    pts.forEach(function (p) { if (p[1] > peak) peak = p[1]; });
+    state.doses.forEach(function (d) { if (d.mg > peak) peak = d.mg; });
+
+    var ymax = frozenYmax || Math.max(300, Math.ceil((peak + 30) / 100) * 100);
+    var W = box.clientWidth || 340, H = box.clientHeight || 240;
+    var L = 34, R = 12, T = 24, B = 24, pw = W - L - R, ph = H - T - B;
+    var X = function (t) { return L + (t - XMIN) / (xmax - XMIN) * pw; };
+    var Y = function (v) { return T + (1 - v / ymax) * ph; };
+    G = { L: L, T: T, pw: pw, ph: ph, xmax: xmax, ymax: ymax, bed: bed };
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+
+    var o = [];
+    o.push('<defs><clipPath id="plot"><rect x="' + L + '" y="' + T + '" width="' + pw + '" height="' + ph + '"/></clipPath></defs>');
+    o.push('<rect data-bg="1" x="0" y="0" width="' + W + '" height="' + H + '" fill="transparent"/>');
+
+    var ystep = ymax > 500 ? 200 : 100;
+    for (var v = 0; v <= ymax; v += ystep) {
+      o.push('<line x1="' + L + '" x2="' + (L + pw) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="var(--line)" stroke-width="1" pointer-events="none"/>');
+      o.push('<text pointer-events="none" x="' + (L - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + v + '</text>');
+    }
+    o.push('<text pointer-events="none" x="' + (L - 6) + '" y="' + (T - 10) + '" text-anchor="end">mg</text>');
+    var step = (xmax - XMIN) * 44 / pw > 2 ? 3 : 2;
+    for (var h = Math.ceil(XMIN / step) * step; h <= xmax - 0.4; h += step) {
+      o.push('<text pointer-events="none" x="' + X(h) + '" y="' + (H - 7) + '" text-anchor="middle">' + fmtShort(h) + '</text>');
+    }
+
+    o.push('<rect x="' + X(bed) + '" y="' + T + '" width="' + (X(xmax) - X(bed)) + '" height="' + ph + '" fill="var(--night-fill)" pointer-events="none"/>');
+    o.push('<line x1="' + X(bed) + '" x2="' + X(bed) + '" y1="' + T + '" y2="' + (T + ph) + '" stroke="var(--night)" stroke-width="1.5" pointer-events="none"/>');
+    o.push('<line x1="' + X(bed) + '" x2="' + X(xmax) + '" y1="' + Y(LIMIT) + '" y2="' + Y(LIMIT) + '" stroke="var(--night)" stroke-width="1" stroke-dasharray="2 3" pointer-events="none"/>');
+
+    var now = nowHour();
+    if (now > XMIN && now < bed) {
+      o.push('<line x1="' + X(now) + '" x2="' + X(now) + '" y1="' + (T + ph - 6) + '" y2="' + (T + ph) + '" stroke="var(--muted)" stroke-width="1.5" pointer-events="none"/>');
+      o.push('<text class="halo" pointer-events="none" x="' + X(now) + '" y="' + (T + ph - 9) + '" text-anchor="middle">now</text>');
+    }
+
+    var path = pts.map(function (p, i) { return (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1); }).join('');
+    o.push('<g clip-path="url(#plot)" pointer-events="none">');
+    o.push('<path d="' + path + 'L' + X(xmax) + ' ' + Y(0) + 'L' + X(XMIN) + ' ' + Y(0) + 'Z" fill="var(--caff-fill)" stroke="none"/>');
+    o.push('<path d="' + path + '" fill="none" stroke="var(--caff)" stroke-width="2" stroke-linejoin="round"/>');
+
+    var csr = activeI >= 0 ? !!state.doses[activeI].sr : false, cvals = [];
+    for (var t2 = XMIN; t2 <= bed + 1e-9; t2 += 1 / 6) cvals.push([t2, maxAt(t2, csr, activeI)]);
+    var anyRoom = cvals.some(function (p) { return p[1] > 0; });
+    if (anyRoom) {
+      var c = cvals.map(function (p, ci) { return (ci ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(Math.max(-ymax * 0.1, Math.min(ymax * 1.5, p[1]))).toFixed(1); });
+      o.push('<path d="' + c.join('') + '" fill="none" stroke="var(--night)" stroke-width="1.5" stroke-dasharray="5 4"/>');
+    }
+    o.push('</g>');
+    o.push('<text class="nightlbl halo" pointer-events="none" x="' + (X(bed) - 5) + '" y="' + (T + 12) + '" text-anchor="end">bed</text>');
+    if (anyRoom) {
+      var li = -1;
+      for (var q = 0; q < cvals.length; q++) if (cvals[q][1] > 0 && cvals[q][1] <= ymax * 0.8) { li = q; break; }
+      if (li < 0) li = cvals.length - 2;
+      var tl = Math.min(bed - 0.3, Math.max(XMIN + 0.3, cvals[li][0]));
+      var yl = Math.min(ymax * 0.92, Math.max(ymax * 0.1, cvals[li][1]));
+      var leftSide = X(tl) > L + pw * 0.45;
+      o.push('<text class="nightlbl halo" pointer-events="none" x="' + (X(tl) + (leftSide ? -8 : 8)) + '" y="' + (Y(yl) + 4) + '" text-anchor="' + (leftSide ? 'end' : 'start') + '">' + (activeI >= 0 ? 'max for this drink' : 'max you can add') + '</text>');
+    }
+
+    var pk = sleepPeak(), bedMg = pk.v;
+    var cls = bedMg <= LIMIT ? 'good' : bedMg <= LIMIT * 2 ? 'warn' : 'bad';
+    o.push('<circle cx="' + X(pk.t) + '" cy="' + Y(Math.min(bedMg, ymax)) + '" r="5" fill="var(--' + cls + ')" stroke="var(--surface)" stroke-width="2" pointer-events="none"/>');
+
+    state.doses.forEach(function (d, i) {
+      var cx = X(d.t), cy = Y(Math.min(d.mg, ymax));
+      var active = activeI === i;
+      o.push('<line x1="' + cx + '" x2="' + cx + '" y1="' + Y(0) + '" y2="' + cy + '" stroke="var(--caff)" stroke-width="1.5" stroke-dasharray="1 3" pointer-events="none"/>');
+      var anchor = cx > L + pw - 30 ? 'end' : cx < L + 30 ? 'start' : 'middle';
+      o.push('<text class="lbl halo" pointer-events="none" x="' + cx + '" y="' + (cy - 18) + '" text-anchor="' + anchor + '">' + d.mg + (d.sr ? ' SR' : '') + '</text>');
+      o.push('<g class="handle" data-i="' + i + '" tabindex="0" role="button" aria-label="Drink: ' + d.mg + ' mg at ' + fmt(d.t) + '. Arrow keys move it, Enter edits.">');
+      o.push('<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="transparent"/>');
+      o.push('<g transform="translate(' + cx + ' ' + cy + ') rotate(-28) scale(' + (active ? 1.25 : 1) + ')">');
+      o.push('<ellipse class="ring" cx="0" cy="0" rx="7.5" ry="10.5" fill="var(--bean)" stroke="' + (active ? 'var(--ink)' : 'var(--surface)') + '" stroke-width="2"/>');
+      o.push('<path d="M0 -9.5 C 3.6 -4 -3.6 4 0 9.5" fill="none" stroke="var(--bg)" stroke-width="1.7" stroke-linecap="round"/>');
+      o.push('</g>');
+      o.push('</g>');
+    });
+
+    // scrubber: stats for the hour under your finger
+    if (scrub !== null && !sheet) {
+      var st = Math.min(xmax, Math.max(XMIN, scrub)), sx = X(st), sv = level(st, -1, false);
+      var rows = [];
+      if (st < bed) {
+        rows.push(['Can still add', maxAt(st, false, -1)]);
+        if (state.presets.some(function (p) { return p.sr; })) rows.push(['As SR pill', maxAt(st, true, -1)]);
+      }
+      var bw = 156, bh = 43 + rows.length * 17, bx = Math.min(L + pw - bw, Math.max(L, sx - bw / 2)), by = T + 2;
+      o.push('<g pointer-events="none">');
+      o.push('<line x1="' + sx + '" x2="' + sx + '" y1="' + T + '" y2="' + (T + ph) + '" stroke="var(--ink)" stroke-width="1"/>');
+      o.push('<circle cx="' + sx + '" cy="' + Y(Math.min(sv, ymax)) + '" r="4.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>');
+      o.push('<rect x="' + bx + '" y="' + by + '" width="' + bw + '" height="' + bh + '" rx="9" fill="var(--bg)" stroke="var(--line)"/>');
+      o.push('<text x="' + (bx + 10) + '" y="' + (by + 17) + '" style="fill:var(--ink);font-weight:600;font-size:12px">' + fmt(st) + '</text>');
+      o.push('<text x="' + (bx + 10) + '" y="' + (by + 34) + '">In your body</text>');
+      o.push('<text x="' + (bx + bw - 10) + '" y="' + (by + 34) + '" text-anchor="end" style="fill:var(--ink);font-weight:600">' + Math.round(sv) + ' mg</text>');
+      rows.forEach(function (r, ri) {
+        var mv = r[1] <= 0 ? 0 : Math.floor(r[1] / 5) * 5, yy = by + 51 + ri * 17;
+        o.push('<text x="' + (bx + 10) + '" y="' + yy + '">' + r[0] + '</text>');
+        o.push('<text x="' + (bx + bw - 10) + '" y="' + yy + '" text-anchor="end" style="fill:var(--' + (mv > 0 ? 'good' : 'bad') + ');font-weight:600">' + (mv >= MAXDOSE ? MAXDOSE + '+' : mv) + ' mg</text>');
+      });
+      o.push('</g>');
+    }
+
+    svg.innerHTML = o.join('');
+
+    $('bedMg').textContent = Math.round(bedMg);
+    $('bedLbl').textContent = pk.t > bed + 0.01 ? 'mg peak at ' + fmt(pk.t) + ', after bed' : 'mg left at ' + fmt(bed);
+    $('bedVal').textContent = fmt(bed);
+    var vd = $('verdict');
+    vd.className = 'verdict ' + cls;
+    vd.textContent = cls === 'good' ? 'Clear for sleep' : cls === 'warn' ? 'Borderline' : 'Too much for good sleep';
+    var sum = 0; state.doses.forEach(function (d) { sum += d.mg; });
+    var tot = $('total');
+    tot.className = 'total' + (sum > DAYMAX ? ' warn' : '');
+    tot.textContent = sum + ' of ' + DAYMAX + ' mg today';
+    var hint = $('hint'), left = LIMIT - bedMg;
+    if (left <= 0) {
+      hint.textContent = 'Over your ' + LIMIT + ' mg limit by ' + Math.round(-left) + ' mg. Move a drink earlier or shrink it.';
+    } else if (maxAt(bed, false, -1) >= 95) {
+      hint.textContent = 'One more coffee fits any time before bed.';
+    } else {
+      var latest = null;
+      for (var lt = bed; lt >= XMIN; lt -= 1 / 12) if (maxAt(lt, false, -1) >= 95) { latest = lt; break; }
+      hint.textContent = latest !== null ? 'Last call for one more coffee: ' + fmt(latest) + '.' : 'No room for another coffee today.';
+    }
+
+    var sensName = { 25: 'Sensitive', 50: 'Typical', 100: 'Tolerant' }[state.limit] || state.limit + ' mg';
+    var hlName = { 3.5: 'Fast', 5: 'Average', 7: 'Slow', 10: 'Very slow' }[state.hl] || state.hl + ' h';
+    $('setSum').textContent = 'Bed ' + fmt(bed) + ' · ' + sensName + ' · ' + hlName;
+
+    [['sens', state.limit], ['hl', state.hl]].forEach(function (p) {
+      Array.prototype.forEach.call($(p[0]).querySelectorAll('button'), function (b) {
+        b.setAttribute('aria-pressed', String(+b.getAttribute('data-v') === p[1]));
+      });
+    });
+  }
+
+  /* ---------- drink sheet ---------- */
+  function syncSheet() {
+    if (!sheet) return;
+    var d = state.doses[sheet.i], mx = maxFor(sheet.i);
+    $('sheetTime').textContent = fmt(d.t);
+    $('sheetMg').textContent = d.mg;
+    $('srToggle').setAttribute('aria-pressed', String(!!d.sr));
+    range.value = d.mg;
+    range.style.setProperty('--max', Math.max(0, Math.min(100, (mx - 5) / (MAXDOSE - 5) * 100)) + '%');
+    var note = $('sheetNote');
+    if (mx <= 0) { note.className = 'bad'; note.textContent = 'No room at this hour'; }
+    else if (d.mg > mx) { note.className = 'bad'; note.textContent = (d.mg - mx) + ' mg over the max here'; }
+    else { note.className = ''; note.textContent = 'Max here: ' + mx + ' mg'; }
+    $('sheetSecondary').textContent = sheet.isNew ? 'Cancel' : 'Remove';
+    $('sheetPrimary').textContent = sheet.isNew ? 'Add' : 'Done';
+  }
+  function openSheet(i, isNew) {
+    sheet = { i: i, isNew: isNew }; scrub = null;
+    var d = state.doses[i];
+    sheetEl.className = 'sheet ' + (d.mg / (G.ymax || 300) < 0.5 ? 'at-top' : 'at-bottom');
+    sheetEl.hidden = false;
+    syncSheet(); render();
+  }
+  function closeSheet(keep) {
+    if (!sheet) return;
+    if (!keep) state.doses.splice(sheet.i, 1);
+    sheet = null; sheetEl.hidden = true;
+    save(); render();
+  }
+  function setSheetDose(t, mg) {
+    if (!sheet) return;
+    var d = state.doses[sheet.i];
+    if (t != null) d.t = snapT(t, bedHour());
+    if (mg != null) d.mg = snapMg(mg);
+    render(); syncSheet();
+  }
+  range.addEventListener('input', function () { setSheetDose(null, +range.value); });
+  $('chips').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-p]');
+    if (!b || !sheet) return;
+    var p = state.presets[+b.getAttribute('data-p')], d = state.doses[sheet.i];
+    if (!p) return;
+    d.mg = Math.min(MAXDOSE, Math.max(1, p.mg)); d.sr = !!p.sr;
+    render(); syncSheet();
+  });
+  $('srToggle').addEventListener('click', function () {
+    if (!sheet) return;
+    var d = state.doses[sheet.i]; d.sr = !d.sr;
+    render(); syncSheet();
+  });
+
+  /* ---------- drink buttons (presets) ---------- */
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function renderChips() {
+    $('chips').innerHTML = state.presets.map(function (p, i) {
+      return '<button type="button" data-p="' + i + '" id="chip-' + i + '"><b>' + esc(p.name || 'Drink') + '</b>' + p.mg + (p.sr ? ' <em>SR</em>' : '') + '</button>';
+    }).join('');
+  }
+  function renderPresets() {
+    $('presetList').innerHTML = state.presets.map(function (p, i) {
+      return '<div class="prow" data-i="' + i + '">' +
+        '<input id="pname-' + i + '" data-k="name" maxlength="14" value="' + esc(p.name) + '" aria-label="Drink name">' +
+        '<input id="pmg-' + i + '" data-k="mg" type="number" inputmode="numeric" min="1" max="' + MAXDOSE + '" value="' + p.mg + '" aria-label="Caffeine in ' + esc(p.name) + ', mg">' +
+        '<button type="button" class="psr" data-k="sr" aria-pressed="' + !!p.sr + '" aria-label="Sustained release">SR</button>' +
+        '<button type="button" class="pdel" data-k="del" aria-label="Remove ' + esc(p.name) + '">×</button></div>';
+    }).join('');
+    $('presetAdd').disabled = state.presets.length >= MAXPRESETS;
+    renderChips();
+  }
+  $('presetList').addEventListener('input', function (e) {
+    var row = e.target.closest('.prow'); if (!row) return;
+    var p = state.presets[+row.getAttribute('data-i')], k = e.target.getAttribute('data-k');
+    if (k === 'name') p.name = e.target.value.trim();
+    else if (k === 'mg') { var v = Math.round(+e.target.value); if (v >= 1 && v <= MAXDOSE) p.mg = v; }
+    save(); renderChips();
+  });
+  $('presetList').addEventListener('change', function (e) {
+    var row = e.target.closest('.prow');
+    if (row && e.target.getAttribute('data-k') === 'mg') e.target.value = state.presets[+row.getAttribute('data-i')].mg;
+  });
+  $('presetList').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-k]'); if (!b) return;
+    var i = +b.closest('.prow').getAttribute('data-i'), k = b.getAttribute('data-k');
+    if (k === 'sr') state.presets[i].sr = !state.presets[i].sr;
+    else if (k === 'del') state.presets.splice(i, 1);
+    save(); renderPresets(); render();
+  });
+  $('presetAdd').addEventListener('click', function () {
+    if (state.presets.length >= MAXPRESETS) return;
+    state.presets.push({ name: 'Custom', mg: 50, sr: false });
+    save(); renderPresets(); render();
+    var el = $('pname-' + (state.presets.length - 1));
+    if (el) { el.focus(); el.select(); }
+  });
+  $('tMinus').addEventListener('click', function () { if (sheet) setSheetDose(state.doses[sheet.i].t - 1 / 12, null); });
+  $('tPlus').addEventListener('click', function () { if (sheet) setSheetDose(state.doses[sheet.i].t + 1 / 12, null); });
+  $('sheetSecondary').addEventListener('click', function () { closeSheet(false); });
+  $('sheetPrimary').addEventListener('click', function () { closeSheet(true); });
+
+  /* ---------- chart gestures ---------- */
+  function fromXY(x, y) {
+    var r = svg.getBoundingClientRect();
+    var t = XMIN + (x - r.left - G.L) / G.pw * (G.xmax - XMIN);
+    var mg = (1 - (y - r.top - G.T) / G.ph) * G.ymax;
+    return { t: snapT(t, G.bed), mg: snapMg(mg) };
+  }
+  function tAt(x) {
+    var r = svg.getBoundingClientRect();
+    var t = XMIN + (x - r.left - G.L) / G.pw * (G.xmax - XMIN);
+    return Math.min(G.xmax, Math.max(XMIN, Math.round(t * 12) / 12));
+  }
+  function focusHandle(i) {
+    var el = svg.querySelector('.handle[data-i="' + i + '"]');
+    if (el) el.focus({ preventScroll: true });
+  }
+  function cancelPress() {
+    if (!press) return;
+    clearTimeout(press.timer);
+    if (press.el && press.el.parentNode) press.el.parentNode.removeChild(press.el);
+    press = null;
+  }
+  function firePress() {
+    var p = fromXY(press.x, press.y);
+    cancelPress();
+    if (sheet) closeSheet(true);
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+    state.doses.push({ t: p.t, mg: 95 });
+    openSheet(state.doses.length - 1, true);
+  }
+
+  svg.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  svg.addEventListener('pointerdown', function (e) {
+    var h = e.target.closest && e.target.closest('.handle');
+    if (h) {
+      e.preventDefault();
+      var i = +h.getAttribute('data-i');
+      if (sheet && sheet.i !== i) closeSheet(true);
+      drag = { i: i, id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false };
+      frozenYmax = G.ymax;
+      try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+      render();
+      return;
+    }
+    if (e.button) return;
+    e.preventDefault();
+    cancelPress();
+    press = { id: e.pointerId, x: e.clientX, y: e.clientY, el: null, timer: 0 };
+    if (state.doses.length < MAXDRINKS) {
+      var r = box.getBoundingClientRect(), ring = document.createElement('div');
+      ring.className = 'press';
+      ring.style.left = (e.clientX - r.left) + 'px';
+      ring.style.top = (e.clientY - r.top) + 'px';
+      box.appendChild(ring);
+      press.el = ring;
+      press.timer = setTimeout(firePress, 450);
+    }
+  });
+  svg.addEventListener('pointermove', function (e) {
+    if (drag && e.pointerId === drag.id) {
+      if (!drag.moved && Math.abs(e.clientX - drag.x0) + Math.abs(e.clientY - drag.y0) < 6) return;
+      drag.moved = true;
+      var p = fromXY(e.clientX, e.clientY), d = state.doses[drag.i];
+      d.t = p.t; d.mg = p.mg;
+      render();
+      if (sheet && sheet.i === drag.i) syncSheet();
+      return;
+    }
+    if (press && e.pointerId === press.id) {
+      if (Math.abs(e.clientX - press.x) + Math.abs(e.clientY - press.y) > 10) {
+        cancelPress();
+        if (!sheet) {
+          scrubbing = e.pointerId;
+          try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+          scrub = tAt(e.clientX); render();
+        }
+      }
+      return;
+    }
+    if (scrubbing !== null && e.pointerId === scrubbing) { scrub = tAt(e.clientX); render(); return; }
+    if (e.pointerType === 'mouse' && !e.buttons && !sheet && !drag) {
+      var hs = tAt(e.clientX);
+      if (hs !== scrub) { scrub = hs; render(); }
+    }
+  });
+  function pointerEnd(e) {
+    if (drag && e.pointerId === drag.id) {
+      var i = drag.i, moved = drag.moved;
+      drag = null; frozenYmax = null;
+      if (!moved && e.type === 'pointerup') {
+        if (!sheet) openSheet(i, false); else render();
+      } else { save(); render(); if (sheet) syncSheet(); }
+      return;
+    }
+    if (press && e.pointerId === press.id) {
+      var tx = press.x;
+      cancelPress();
+      if (e.type !== 'pointerup') return;
+      if (sheet) { closeSheet(true); return; }
+      var tt = tAt(tx);
+      scrub = (scrub !== null && e.pointerType !== 'mouse' && Math.abs(scrub - tt) < 0.4) ? null : tt;
+      render();
+      return;
+    }
+    if (scrubbing !== null && e.pointerId === scrubbing) scrubbing = null;
+  }
+  svg.addEventListener('pointerup', pointerEnd);
+  svg.addEventListener('pointercancel', pointerEnd);
+  svg.addEventListener('pointerleave', function (e) {
+    if (e.pointerType === 'mouse' && scrubbing === null && scrub !== null) { scrub = null; render(); }
+  });
+
+  svg.addEventListener('keydown', function (e) {
+    var h = e.target.closest && e.target.closest('.handle');
+    if (!h) return;
+    var i = +h.getAttribute('data-i'), d = state.doses[i], used = true;
+    if (e.key === 'ArrowLeft') d.t = snapT(d.t - 0.25, G.bed);
+    else if (e.key === 'ArrowRight') d.t = snapT(d.t + 0.25, G.bed);
+    else if (e.key === 'ArrowUp') d.mg = snapMg(d.mg + 5);
+    else if (e.key === 'ArrowDown') d.mg = snapMg(d.mg - 5);
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (sheet) closeSheet(true); openSheet(i, false); return; }
+    else if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (sheet) closeSheet(true);
+      state.doses.splice(i, 1); i = -1;
+    }
+    else used = false;
+    if (!used) return;
+    e.preventDefault(); save(); render();
+    if (sheet) syncSheet();
+    if (i >= 0) focusHandle(i);
+  });
+
+  /* ---------- bottom controls ---------- */
+  function shiftBed(mins) {
+    var p = state.bed.split(':'), m = ((+p[0]) * 60 + (+p[1]) + mins + 1440) % 1440;
+    var hh = Math.floor(m / 60), mm = m % 60;
+    state.bed = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+    save(); render(); syncSheet();
+  }
+  $('bedMinus').addEventListener('click', function () { shiftBed(-15); });
+  $('bedPlus').addEventListener('click', function () { shiftBed(15); });
+  $('sens').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-v]'); if (!b) return;
+    state.limit = +b.getAttribute('data-v'); save(); render(); syncSheet();
+  });
+  $('hl').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-v]'); if (!b) return;
+    state.hl = +b.getAttribute('data-v'); save(); render(); syncSheet();
+  });
+
+  $('setBtn').addEventListener('click', function () {
+    var c = $('controls');
+    c.hidden = !c.hidden;
+    this.setAttribute('aria-expanded', String(!c.hidden));
+  });
+
+  var infoBtn = $('infoBtn'), info = $('info');
+  infoBtn.addEventListener('click', function () {
+    info.hidden = !info.hidden;
+    infoBtn.setAttribute('aria-expanded', String(!info.hidden));
+    infoBtn.textContent = info.hidden ? 'How it works' : 'Back to chart';
+  });
+
+  if (window.ResizeObserver) new ResizeObserver(function () { if (!drag) render(); }).observe(box);
+  else window.addEventListener('resize', function () { if (!drag) render(); });
+  setInterval(function () { if (!drag && !press) render(); }, 60000);
+
+  renderPresets();
+  render();
+})();
+</script>
+
+</html>
