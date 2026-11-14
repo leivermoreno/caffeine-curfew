@@ -55,6 +55,14 @@ button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-c
 .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 h1 { font-family: var(--display); font-size: 14px; font-weight: 600; margin: 0; letter-spacing: .02em; color: var(--muted); }
 .linkbtn { border: none; background: none; color: var(--night); font-weight: 500; padding: 4px 0; min-height: 28px; }
+.readout-row { display: flex; align-items: flex-end; gap: 12px; }
+.readout { flex: 1; min-width: 0; }
+.readout-row .iconbtn { flex: none; margin-bottom: 2px; }
+.iconbtn { width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; }
+.iconbtn svg { position: static; width: 17px; height: 17px; }
+.iconbtn:disabled { opacity: .35; cursor: default; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 72px); z-index: 15; display: flex; align-items: center; gap: 14px; max-width: calc(100% - 32px); padding: 6px 6px 6px 14px; border-radius: 12px; background: var(--ink); color: var(--bg); font-size: 13px; box-shadow: 0 6px 20px rgba(0, 0, 0, .45); white-space: nowrap; }
+.toast button { min-height: 32px; padding: 0 12px; border: none; border-radius: 8px; background: var(--bg); color: var(--ink); font-weight: 600; font-size: 13px; }
 .big { font-family: var(--display); font-weight: 600; font-size: clamp(34px, 10vw, 46px); line-height: 1; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .big small { font-family: var(--body); font-size: 14px; font-weight: 400; color: var(--muted); }
 .status { margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 2px 10px; font-variant-numeric: tabular-nums; }
@@ -162,10 +170,15 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     <button type="button" class="linkbtn" id="infoBtn" aria-expanded="false" aria-controls="info">How it works</button>
   </div>
 
-  <div aria-live="polite">
+  <div class="toast" id="toast" role="status" hidden><span id="toastMsg">Drinks cleared</span><button type="button" id="undoBtn">Undo</button></div>
+
+  <div class="readout-row">
+  <div class="readout" aria-live="polite">
     <div class="big"><span id="bedMg">0</span><small id="bedLbl">mg left at 11:00 pm</small></div>
     <p class="status"><span class="verdict" id="verdict"></span><span class="total" id="total"></span></p>
     <p class="hint" id="hint"></p>
+  </div>
+  <button type="button" class="iconbtn" id="resetBtn" aria-label="Clear all drinks" title="Clear all drinks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 3.5v5h5"/></svg></button>
   </div>
 
   <div class="chart" id="chartBox">
@@ -513,6 +526,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 
     var sensName = { 25: 'Sensitive', 50: 'Typical', 100: 'Tolerant' }[state.limit] || state.limit + ' mg';
     var hlName = { 3.5: 'Fast', 5: 'Average', 7: 'Slow', 10: 'Very slow' }[state.hl] || state.hl + ' h';
+    $('resetBtn').disabled = !state.doses.length;
     $('setSum').textContent = 'Bed ' + fmt(bed) + ' · ' + sensName + ' · ' + hlName + (state.weight ? ' · ' + (state.wunit === 'kg' ? Math.round(state.weight) + ' kg' : Math.round(state.weight / LB) + ' lb') : '');
 
     [['sens', state.limit], ['hl', state.hl]].forEach(function (p) {
@@ -796,6 +810,27 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   $('wunit').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-u]'); if (!b) return;
     state.wunit = b.getAttribute('data-u'); save(); showWeight(); render();
+  });
+
+  /* ---------- clear all drinks, with undo ---------- */
+  var undoDoses = null, toastT = 0;
+  function hideToast() { $('toast').hidden = true; undoDoses = null; }
+  $('resetBtn').addEventListener('click', function () {
+    if (!state.doses.length) return;
+    if (sheet) { sheet = null; sheetEl.hidden = true; }
+    undoDoses = state.doses.slice();
+    var n = state.doses.length;
+    state.doses = []; scrub = null;
+    save(); render();
+    $('toastMsg').textContent = n === 1 ? '1 drink cleared' : n + ' drinks cleared';
+    $('toast').hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(hideToast, 6000);
+  });
+  $('undoBtn').addEventListener('click', function () {
+    if (!undoDoses) return;
+    state.doses = undoDoses.concat(state.doses).slice(0, MAXDRINKS);
+    clearTimeout(toastT); hideToast();
+    save(); render();
   });
 
   var panel = $('controls'), scrim = $('scrim'), setBtn = $('setBtn');
