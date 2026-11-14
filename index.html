@@ -127,6 +127,9 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 .prow .pdel { min-height: 38px; border: none; background: none; color: var(--muted); font-size: 18px; }
 .row { display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: center; gap: 10px; }
 .row > span { font-size: 12.5px; color: var(--muted); }
+.wrow { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 6px; }
+.wrow input { font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; min-height: 38px; width: 100%; min-width: 0; }
+.wrow input::placeholder { color: var(--muted); }
 .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
 .seg button { flex: 1; min-width: 0; min-height: 38px; padding: 0 4px; border: none; background: none; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .seg button + button { border-left: 1px solid var(--line); }
@@ -182,6 +185,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       <p><strong>Sustained-release pills</strong> (the SR toggle) follow studies of extended-release caffeine: about a quarter hits right away and the rest absorbs over 6 to 8 hours. It peaks around 4 hours after you take it, at roughly half the height of the same dose as coffee, and the tail lasts longer, so an afternoon pill can still be releasing at night. Brands differ, and Genius doesn't publish its exact curve.</p>
       <p><strong>The bedtime check</strong> covers your first 3 hours of sleep, not only the moment you lie down, so a pill still releasing after bed counts.</p>
       <p><strong>Drink buttons</strong> can be renamed, resized or marked SR in Settings.</p>
+      <p><strong>Weight</strong> is optional. With it, your bedtime limit scales with your body (the same milligrams make a higher concentration in a smaller body; the presets assume 70 kg / 154 lb), and two guidelines from the European Food Safety Authority appear: up to about 3 mg per kg in a single dose (never more than 200 mg), drawn as the yellow "max per dose" line, and up to about 5.7 mg per kg a day (never more than 400 mg).</p>
       <p><strong>Daily total</strong> is checked against 400 mg, the usual upper guideline for healthy adults.</p>
       <p>Things this skips: caffeine takes 30 to 60 minutes to peak, decaf still has 2 to 15 mg, and chocolate and cola count too. Even if you fall asleep fine, caffeine at bedtime can cut deep sleep.</p>
     </div>
@@ -212,6 +216,15 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
         <button type="button" data-v="5" id="hlAvg">Average</button>
         <button type="button" data-v="7" id="hlSlow">Slow</button>
         <button type="button" data-v="10" id="hlVery">V. slow</button>
+      </div>
+    </div>
+    <div class="row"><span id="lblW">Weight</span>
+      <div class="wrow">
+        <input id="weight" type="number" inputmode="decimal" placeholder="Optional" aria-labelledby="lblW">
+        <div class="seg" id="wunit" role="group" aria-label="Weight unit">
+          <button type="button" data-u="lb" id="wLb">lb</button>
+          <button type="button" data-u="kg" id="wKg">kg</button>
+        </div>
       </div>
     </div>
     <div class="drinks">
@@ -248,6 +261,13 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   } catch (e) {}
   if (!Array.isArray(state.presets)) state.presets = DEFAULT_PRESETS.map(function (p) { return { name: p.name, mg: p.mg, sr: p.sr }; });
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  var LB = 0.45359237, REF_KG = 70;
+  // optional body weight scales the bedtime limit: the same mg in a smaller body is a higher concentration
+  function bedLimit() { return state.weight ? Math.round(state.limit * state.weight / REF_KG) : state.limit; }
+  // EFSA: single doses up to ~3 mg/kg (200 mg) and up to ~5.7 mg/kg a day (400 mg) raise no concerns in healthy adults
+  function singleMax() { return state.weight ? Math.min(200, Math.round(state.weight * 3 / 5) * 5) : 0; }
+  function dayMax() { return state.weight ? Math.min(DAYMAX, Math.round(state.weight * 5.7 / 5) * 5) : DAYMAX; }
 
   var $ = function (id) { return document.getElementById(id); };
   var svg = $('chart'), box = $('chartBox'), sheetEl = $('sheet'), range = $('mgRange');
@@ -293,7 +313,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     for (var s = bed; s <= bed + SLEEPWIN + 1e-9; s += 1 / 6) {
       var u = unit(sr, s - t0);
       if (u < 1e-6) continue;
-      var r = (state.limit - level(s, excl, false)) / u;
+      var r = (bedLimit() - level(s, excl, false)) / u;
       if (r < m) m = r;
     }
     return m;
@@ -312,7 +332,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   }
 
   function render() {
-    var LIMIT = state.limit, bed = bedHour(), xmax = bed + SLEEPWIN;
+    var LIMIT = bedLimit(), SMAX = singleMax(), DMAX = dayMax(), bed = bedHour(), xmax = bed + SLEEPWIN;
     state.doses.forEach(function (d) { d.t = snapT(d.t, bed); });
     var activeI = drag ? drag.i : sheet ? sheet.i : -1;
 
@@ -358,6 +378,10 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     o.push('<rect x="' + X(bed) + '" y="' + T + '" width="' + (X(xmax) - X(bed)) + '" height="' + ph + '" fill="var(--night-fill)" pointer-events="none"/>');
     o.push('<line x1="' + X(bed) + '" x2="' + X(bed) + '" y1="' + T + '" y2="' + (T + ph) + '" stroke="var(--night)" stroke-width="1.5" pointer-events="none"/>');
     o.push('<line x1="' + X(bed) + '" x2="' + X(xmax) + '" y1="' + Y(LIMIT) + '" y2="' + Y(LIMIT) + '" stroke="var(--night)" stroke-width="1" stroke-dasharray="2 3" pointer-events="none"/>');
+    if (SMAX && SMAX < ymax) {
+      o.push('<line x1="' + L + '" x2="' + X(bed) + '" y1="' + Y(SMAX) + '" y2="' + Y(SMAX) + '" stroke="var(--warn)" stroke-width="1.2" stroke-dasharray="1 4" stroke-linecap="round" pointer-events="none"/>');
+      o.push('<text class="halo" pointer-events="none" x="' + (X(bed) - 6) + '" y="' + (Y(SMAX) - 5) + '" text-anchor="end" style="fill:var(--warn)">max per dose · ' + SMAX + '</text>');
+    }
 
     var now = nowHour();
     if (now > XMIN && now < bed) {
@@ -398,7 +422,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       var active = activeI === i;
       o.push('<line x1="' + cx + '" x2="' + cx + '" y1="' + Y(0) + '" y2="' + cy + '" stroke="var(--caff)" stroke-width="1.5" stroke-dasharray="1 3" pointer-events="none"/>');
       var anchor = cx > L + pw - 30 ? 'end' : cx < L + 30 ? 'start' : 'middle';
-      o.push('<text class="lbl halo" pointer-events="none" x="' + cx + '" y="' + (cy - 18) + '" text-anchor="' + anchor + '">' + d.mg + (d.sr ? ' SR' : '') + '</text>');
+      o.push('<text class="lbl halo" pointer-events="none"' + (SMAX && d.mg > SMAX ? ' style="fill:var(--warn)"' : '') + ' x="' + cx + '" y="' + (cy - 18) + '" text-anchor="' + anchor + '">' + d.mg + (d.sr ? ' SR' : '') + '</text>');
       o.push('<g class="handle" data-i="' + i + '" tabindex="0" role="button" aria-label="Drink: ' + d.mg + ' mg at ' + fmt(d.t) + '. Arrow keys move it, Enter edits.">');
       o.push('<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="transparent"/>');
       o.push('<g transform="translate(' + cx + ' ' + cy + ') rotate(-28) scale(' + (active ? 1.25 : 1) + ')">');
@@ -411,7 +435,8 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     // scrubber: stats for the hour under your finger
     if (scrub !== null && !sheet) {
       var st = Math.min(xmax, Math.max(XMIN, scrub)), sx = X(st), sv = level(st, -1, false);
-      var rows = [];
+      var rows = [], dayLeft = DMAX - state.doses.reduce(function (a, dd) { return a + dd.mg; }, 0);
+      var cap = Math.max(0, Math.min(SMAX || Infinity, dayLeft));
       if (st < bed) {
         rows.push(['Can still add', maxAt(st, false, -1)]);
         if (state.presets.some(function (p) { return p.sr; })) rows.push(['As SR pill', maxAt(st, true, -1)]);
@@ -425,7 +450,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       o.push('<text x="' + (bx + 10) + '" y="' + (by + 34) + '">In your body</text>');
       o.push('<text x="' + (bx + bw - 10) + '" y="' + (by + 34) + '" text-anchor="end" style="fill:var(--ink);font-weight:600">' + Math.round(sv) + ' mg</text>');
       rows.forEach(function (r, ri) {
-        var mv = r[1] <= 0 ? 0 : Math.floor(r[1] / 5) * 5, yy = by + 51 + ri * 17;
+        var mv = r[1] <= 0 ? 0 : Math.min(Math.floor(r[1] / 5) * 5, Math.floor(cap / 5) * 5), yy = by + 51 + ri * 17;
         o.push('<text x="' + (bx + 10) + '" y="' + yy + '">' + r[0] + '</text>');
         o.push('<text x="' + (bx + bw - 10) + '" y="' + yy + '" text-anchor="end" style="fill:var(--' + (mv > 0 ? 'good' : 'bad') + ');font-weight:600">' + (mv >= MAXDOSE ? MAXDOSE + '+' : mv) + ' mg</text>');
       });
@@ -442,8 +467,8 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     vd.textContent = cls === 'good' ? 'Clear for sleep' : cls === 'warn' ? 'Borderline' : 'Too much for good sleep';
     var sum = 0; state.doses.forEach(function (d) { sum += d.mg; });
     var tot = $('total');
-    tot.className = 'total' + (sum > DAYMAX ? ' warn' : '');
-    tot.textContent = sum + ' of ' + DAYMAX + ' mg today';
+    tot.className = 'total' + (sum > DMAX ? ' warn' : '');
+    tot.textContent = sum + ' of ' + DMAX + ' mg today';
     var hint = $('hint'), left = LIMIT - bedMg;
     if (left <= 0) {
       hint.textContent = 'Over your ' + LIMIT + ' mg limit by ' + Math.round(-left) + ' mg. Move a drink earlier or shrink it.';
@@ -457,7 +482,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 
     var sensName = { 25: 'Sensitive', 50: 'Typical', 100: 'Tolerant' }[state.limit] || state.limit + ' mg';
     var hlName = { 3.5: 'Fast', 5: 'Average', 7: 'Slow', 10: 'Very slow' }[state.hl] || state.hl + ' h';
-    $('setSum').textContent = 'Bed ' + fmt(bed) + ' · ' + sensName + ' · ' + hlName;
+    $('setSum').textContent = 'Bed ' + fmt(bed) + ' · ' + sensName + ' · ' + hlName + (state.weight ? ' · ' + (state.wunit === 'kg' ? Math.round(state.weight) + ' kg' : Math.round(state.weight / LB) + ' lb') : '');
 
     [['sens', state.limit], ['hl', state.hl]].forEach(function (p) {
       Array.prototype.forEach.call($(p[0]).querySelectorAll('button'), function (b) {
@@ -474,11 +499,13 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     $('sheetMg').textContent = d.mg;
     $('srToggle').setAttribute('aria-pressed', String(!!d.sr));
     range.value = d.mg;
-    range.style.setProperty('--max', Math.max(0, Math.min(100, (mx - 5) / (MAXDOSE - 5) * 100)) + '%');
+    var sm = singleMax(), okMax = Math.min(mx, sm || MAXDOSE);
+    range.style.setProperty('--max', Math.max(0, Math.min(100, (okMax - 5) / (MAXDOSE - 5) * 100)) + '%');
     var note = $('sheetNote');
     if (mx <= 0) { note.className = 'bad'; note.textContent = 'No room at this hour'; }
     else if (d.mg > mx) { note.className = 'bad'; note.textContent = (d.mg - mx) + ' mg over the max here'; }
-    else { note.className = ''; note.textContent = 'Max here: ' + mx + ' mg'; }
+    else if (sm && d.mg > sm) { note.className = 'bad'; note.textContent = 'Over ' + sm + ' mg per dose'; }
+    else { note.className = ''; note.textContent = 'Max here: ' + okMax + ' mg'; }
     $('sheetSecondary').textContent = sheet.isNew ? 'Cancel' : 'Remove';
     $('sheetPrimary').textContent = sheet.isNew ? 'Add' : 'Done';
   }
@@ -715,6 +742,29 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     state.hl = +b.getAttribute('data-v'); save(); render(); syncSheet();
   });
 
+  function showWeight() {
+    var u = state.wunit === 'kg' ? 'kg' : 'lb';
+    $('weight').value = state.weight ? (u === 'lb' ? Math.round(state.weight / LB) : Math.round(state.weight)) : '';
+    Array.prototype.forEach.call($('wunit').querySelectorAll('button'), function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-u') === u));
+    });
+  }
+  $('weight').addEventListener('input', function () {
+    var raw = this.value.trim(), u = state.wunit === 'kg' ? 'kg' : 'lb';
+    if (raw === '') state.weight = null;
+    else {
+      var kg = u === 'lb' ? +raw * LB : +raw;
+      if (!(kg >= 30 && kg <= 230)) return;
+      state.weight = Math.round(kg * 10) / 10;
+    }
+    save(); render(); syncSheet();
+  });
+  $('weight').addEventListener('change', showWeight);
+  $('wunit').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-u]'); if (!b) return;
+    state.wunit = b.getAttribute('data-u'); save(); showWeight(); render();
+  });
+
   $('setBtn').addEventListener('click', function () {
     var c = $('controls');
     c.hidden = !c.hidden;
@@ -733,6 +783,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   setInterval(function () { if (!drag && !press) render(); }, 60000);
 
   renderPresets();
+  showWeight();
   render();
 })();
 </script>
