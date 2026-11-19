@@ -195,12 +195,13 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       <p><strong>The dashed line</strong> is the biggest drink you can still add at each hour and sleep well. It drops as bedtime gets closer.</p>
       <p><strong>Sensitivity</strong> sets how much caffeine you can carry into bed: 25 mg if it hits you hard, 50 mg for most people, 100 mg if coffee after dinner never bothers you. These are rules of thumb, not medical limits.</p>
       <p><strong>Clearance</strong> is how fast your body removes it. Half is gone in about 5 hours for most adults (fast 3.5 h, slow 7 h, very slow 10 h). Smokers clear it faster. Pregnancy, birth control pills and some medications make it much slower.</p>
-      <p><strong>Sustained-release pills</strong> (the SR toggle) follow studies of extended-release caffeine: about a quarter hits right away and the rest absorbs over 6 to 8 hours. It peaks around 4 hours after you take it, at roughly half the height of the same dose as coffee, and the tail lasts longer, so an afternoon pill can still be releasing at night. Brands differ, and Genius doesn't publish its exact curve.</p>
+      <p><strong>Sustained-release pills</strong> (the SR toggle) follow studies of extended-release caffeine: about a quarter absorbs like a normal drink and the rest trickles in over many hours. It peaks around 4 hours after you take it, at roughly half the height of the same dose as coffee, and the tail lasts longer, so an afternoon pill can still be releasing at night. Brands differ, and Genius doesn't publish its exact curve.</p>
       <p><strong>The bedtime check</strong> covers your first 3 hours of sleep, not only the moment you lie down, so a pill still releasing after bed counts.</p>
       <p><strong>Drink buttons</strong> can be renamed, resized or marked SR in Settings.</p>
       <p><strong>Weight</strong> is optional. With it, your bedtime limit scales with your body (the same milligrams make a higher concentration in a smaller body; the presets assume 70 kg / 154 lb), and two guidelines from the European Food Safety Authority appear: up to about 3 mg per kg in a single dose (never more than 200 mg), drawn as the yellow "max per dose" line, and up to about 5.7 mg per kg a day (never more than 400 mg).</p>
       <p><strong>Daily total</strong> is checked against 400 mg, the usual upper guideline for healthy adults.</p>
-      <p>Things this skips: caffeine takes 30 to 60 minutes to peak, decaf still has 2 to 15 mg, and chocolate and cola count too. Even if you fall asleep fine, caffeine at bedtime can cut deep sleep.</p>
+      <p><strong>Absorption</strong>: a drink doesn't hit your blood all at once. Regular caffeine absorbs over about an hour and peaks around 40 minutes after you drink it, at about 85% of the dose, because your body is already clearing some. Taking it with food slows this a little more, which the app doesn't model.</p>
+      <p>Things this skips: caffeine left over from the day before, decaf still has 2 to 15 mg, and chocolate and cola count too. Even if you fall asleep fine, caffeine at bedtime can cut deep sleep.</p>
     </div>
   </div>
 
@@ -257,9 +258,11 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   var XMIN = 5, MAXDOSE = 400, DAYMAX = 400, MAXDRINKS = 8, MAXPRESETS = 8, KEY = 'caffeine-curfew-v1';
   // first hours of sleep that must stay under the limit (catches pills still releasing after bed)
   var SLEEPWIN = 3;
-  // sustained release: 25% absorbed at once, 75% absorbed gradually (rate 0.3/h, ~90% in by 7-8 h).
-  // Fitted to 200-250 mg extended-release caffeine studies: peak ~4 h after the dose at about half the immediate-release peak.
-  var SR_FAST = 0.25, SR_KA = 0.3;
+  // Absorption from the gut is first-order (Bateman function), ~100% bioavailable.
+  // Regular drinks: ka 2.7/h (Sadek et al. 2017, instant coffee: median peak ~38 min).
+  // Sustained release: 25% absorbed at the regular rate, 75% at 0.2/h. Fitted to 200-250 mg
+  // extended-release studies: peak ~4 h after the dose at about half the regular peak, with a longer tail.
+  var IR_KA = 2.7, SR_FAST = 0.25, SR_KA = 0.2;
   var DEFAULT_PRESETS = [
     { name: 'Tea', mg: 45, sr: false },
     { name: 'Espresso', mg: 65, sr: false },
@@ -309,11 +312,16 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   }
   function fmtShort(h) { h = h % 24; return (h % 12 === 0 ? 12 : h % 12) + (h < 12 ? 'a' : 'p'); }
   // caffeine in the body per 1 mg taken, dt hours after taking it
+  // fraction absorbed-and-not-yet-cleared, dt hours after a dose absorbed at rate ka
+  function bateman(ka, k, dt) {
+    if (Math.abs(ka - k) < 1e-4) return ka * dt * Math.exp(-k * dt);
+    return ka / (ka - k) * (Math.exp(-k * dt) - Math.exp(-ka * dt));
+  }
   function unit(sr, dt) {
-    if (dt < 0) return 0;
-    var k = Math.LN2 / state.hl, e = Math.exp(-k * dt);
-    if (!sr) return e;
-    return SR_FAST * e + (1 - SR_FAST) * SR_KA / (SR_KA - k) * (e - Math.exp(-SR_KA * dt));
+    if (dt <= 0) return 0;
+    var k = Math.LN2 / state.hl;
+    if (!sr) return bateman(IR_KA, k, dt);
+    return SR_FAST * bateman(IR_KA, k, dt) + (1 - SR_FAST) * bateman(SR_KA, k, dt);
   }
   function level(t, excl, strict) {
     var s = 0;
