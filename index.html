@@ -57,7 +57,10 @@ h1 { font-family: var(--display); font-size: 14px; font-weight: 600; margin: 0; 
 .linkbtn { border: none; background: none; color: var(--night); font-weight: 500; padding: 4px 0; min-height: 28px; }
 .readout-row { display: flex; align-items: flex-end; gap: 12px; }
 .readout { flex: 1; min-width: 0; }
-.readout-row .iconbtn { flex: none; margin-bottom: 2px; }
+.quick { flex: none; display: flex; gap: 8px; margin-bottom: 2px; }
+.nowbtn { height: 34px; padding: 0 12px 0 9px; border-radius: 999px; border: 1px solid var(--caff); background: var(--caff-fill); color: var(--caff); display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+.nowbtn svg { position: static; width: 16px; height: 16px; flex: none; }
+.nowbtn:disabled { opacity: .35; cursor: default; }
 .iconbtn { width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; }
 .iconbtn svg { position: static; width: 17px; height: 17px; }
 .iconbtn:disabled { opacity: .35; cursor: default; }
@@ -178,7 +181,10 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     <p class="status"><span class="verdict" id="verdict"></span><span class="total" id="total"></span></p>
     <p class="hint" id="hint"></p>
   </div>
+  <div class="quick">
+  <button type="button" class="nowbtn" id="nowBtn" aria-label="Add a drink now" title="Add a drink now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Now</button>
   <button type="button" class="iconbtn" id="resetBtn" aria-label="Clear all drinks" title="Clear all drinks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 3.5v5h5"/></svg></button>
+  </div>
   </div>
 
   <div class="chart" id="chartBox">
@@ -381,7 +387,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 
   function render() {
     var LIMIT = bedLimit(), SMAX = singleMax(), DMAX = dayMax(), bed = bedHour(), xmax = bed + SLEEPWIN;
-    state.doses.forEach(function (d) { d.t = snapT(d.t, bed); });
+    state.doses.forEach(function (d) { d.t = Math.min(bed, Math.max(XMIN, d.t)); });
     var activeI = drag ? drag.i : sheet ? sheet.i : -1;
 
     var times = [];
@@ -535,6 +541,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     var sensName = { 25: 'Sensitive', 50: 'Typical', 100: 'Tolerant' }[state.limit] || state.limit + ' mg';
     var hlName = { 3.5: 'Fast', 5: 'Average', 7: 'Slow', 10: 'Very slow' }[state.hl] || state.hl + ' h';
     $('resetBtn').disabled = !state.doses.length;
+    $('nowBtn').disabled = state.doses.length >= MAXDRINKS;
     $('setSum').textContent = 'Bed ' + fmt(bed) + ' · ' + sensName + ' · ' + hlName + (state.weight ? ' · ' + (state.wunit === 'kg' ? Math.round(state.weight) + ' kg' : Math.round(state.weight / LB) + ' lb') : '');
 
     [['sens', state.limit], ['hl', state.hl]].forEach(function (p) {
@@ -677,6 +684,20 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     state.doses.push({ t: p.t, mg: 95 });
     openSheet(state.doses.length - 1, true);
   }
+
+  // "Now": drop a drink at the current minute and open the dose panel.
+  // Defaults to the last drink's amount and type, since people repeat what they take.
+  $('nowBtn').addEventListener('click', function () {
+    if (state.doses.length >= MAXDRINKS) return;
+    if (sheet) closeSheet(true);
+    if (!$('info').hidden) $('infoBtn').click();
+    var bed = bedHour(), t = Math.min(bed, Math.max(XMIN, Math.round(nowHour() * 60) / 60));
+    var last = state.doses.length ? state.doses[state.doses.length - 1] : null;
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+    state.doses.push({ t: t, mg: last ? last.mg : 95, sr: last ? !!last.sr : false });
+    scrub = null;
+    openSheet(state.doses.length - 1, true);
+  });
 
   svg.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   svg.addEventListener('pointerdown', function (e) {
