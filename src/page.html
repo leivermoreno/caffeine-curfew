@@ -4,7 +4,7 @@
 <style>
 /* Layout: one phone screen, no scrolling. Readout on top, the chart takes all spare height, three button rows at the bottom. Drinks are added by press-and-hold on the chart. */
 :root {
-  /* single dark look by choice: espresso ground, crema ink, latte curve, dark-roast beans */
+  /* single dark look by choice: espresso ground, crema ink, latte curve, caramel beans, white guide lines */
   color-scheme: dark;
   --bg: #140E0A;
   --surface: #1F1611;
@@ -13,12 +13,12 @@
   --line: #3A2B21;
   --caff: #D9A066;
   --caff-fill: rgba(217, 160, 102, .15);
-  --bean: #5E3519;
-  --bean-crease: #C98A52;
-  --stem: rgba(244, 232, 216, .62);
+  --bean: #CC8A4B;
+  --bean-crease: var(--bg);
+  --stem: rgba(255, 255, 255, .78);
   --level: #D9A066;
   --level-fill: rgba(217, 160, 102, .15);
-  --limit: #A9B0EE;
+  --limit: rgba(255, 255, 255, .78);
   --night: #A9B0EE;
   --night-fill: rgba(169, 176, 238, .09);
   --good: #7FCB9C;
@@ -69,7 +69,7 @@ svg text { font-family: var(--body); font-size: 11px; fill: var(--muted); font-v
 svg .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 svg .lbl { fill: var(--ink); font-weight: 600; font-size: 12px; }
 svg .nightlbl { fill: var(--night); font-weight: 600; }
-svg .limitlbl { fill: var(--night); font-weight: 600; }
+svg .limitlbl { fill: #fff; font-weight: 600; }
 .handle { cursor: grab; outline: none; }
 .handle:focus-visible .ring { stroke: var(--ink); }
 
@@ -516,7 +516,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       o.push('<g class="handle" data-i="' + i + '" tabindex="0" role="button" aria-label="Drink: ' + d.mg + ' mg at ' + fmt(d.t) + '. Arrow keys move it, Enter edits.">');
       o.push('<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="transparent"/>');
       o.push('<g transform="translate(' + cx + ' ' + cy + ') rotate(-28) scale(' + (active ? 1.25 : 1) + ')">');
-      o.push('<ellipse class="ring" cx="0" cy="0" rx="7.5" ry="10.5" fill="var(--bean)" stroke="var(--ink)" stroke-opacity="' + (active ? 1 : .85) + '" stroke-width="' + (active ? 2 : 1.4) + '"/>');
+      o.push('<ellipse class="ring" cx="0" cy="0" rx="7.5" ry="10.5" fill="var(--bean)" stroke="' + (active ? 'var(--ink)' : 'var(--surface)') + '" stroke-width="2"/>');
       o.push('<path d="M0 -9.5 C 3.6 -4 -3.6 4 0 9.5" fill="none" stroke="var(--bean-crease)" stroke-width="1.6" stroke-linecap="round"/>');
       o.push('</g>');
       o.push('</g>');
