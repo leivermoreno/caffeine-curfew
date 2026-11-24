@@ -21,7 +21,7 @@ img { max-width: 100%; }
 <style>
 /* Layout: one phone screen, no scrolling. Readout on top, the chart takes all spare height, three button rows at the bottom. Drinks are added by press-and-hold on the chart. */
 :root {
-  /* single dark look by choice: espresso ground, crema ink, violet caffeine curve, caramel beans */
+  /* single dark look by choice: espresso ground, crema ink, latte curve, dark-roast beans */
   color-scheme: dark;
   --bg: #140E0A;
   --surface: #1F1611;
@@ -30,10 +30,12 @@ img { max-width: 100%; }
   --line: #3A2B21;
   --caff: #D9A066;
   --caff-fill: rgba(217, 160, 102, .15);
-  --bean: #CC8A4B;
-  --level: #A797F0;
-  --level-fill: rgba(150, 132, 238, .22);
-  --limit: rgba(244, 232, 216, .72);
+  --bean: #5E3519;
+  --bean-crease: #C98A52;
+  --stem: rgba(244, 232, 216, .62);
+  --level: #D9A066;
+  --level-fill: rgba(217, 160, 102, .15);
+  --limit: #A9B0EE;
   --night: #A9B0EE;
   --night-fill: rgba(169, 176, 238, .09);
   --good: #7FCB9C;
@@ -84,7 +86,7 @@ svg text { font-family: var(--body); font-size: 11px; fill: var(--muted); font-v
 svg .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 svg .lbl { fill: var(--ink); font-weight: 600; font-size: 12px; }
 svg .nightlbl { fill: var(--night); font-weight: 600; }
-svg .limitlbl { fill: var(--ink); font-weight: 600; }
+svg .limitlbl { fill: var(--night); font-weight: 600; }
 .handle { cursor: grab; outline: none; }
 .handle:focus-visible .ring { stroke: var(--ink); }
 
@@ -221,7 +223,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       <p><strong>Check any hour</strong> by sliding your finger across the chart. The line normally sits on the current time and shows what's in your body right now. While you slide it follows your finger, and when you let go it glides back to now. Drinks taken close together fan out sideways so each stays tappable; the dotted line under each one still starts at its real time.</p>
       <p><strong>The dashed line</strong> is the biggest drink you can still add at each hour and sleep well. It drops as bedtime gets closer.</p>
       <p><strong>Sensitivity</strong> sets how much caffeine you can carry into bed: 25 mg if it hits you hard, 50 mg for most people, 100 mg if coffee after dinner never bothers you. These are rules of thumb, not medical limits.</p>
-      <p><strong>Clearance</strong> is how fast your body removes it. Half is gone in about 5 hours for most adults (fast 3.5 h, slow 7 h, very slow 10 h). Smokers clear it faster. Pregnancy, birth control pills and some medications make it much slower.</p>
+      <p><strong>Clearance</strong>: the app uses the adult average, where half the caffeine is gone in about 5 hours. Smokers clear it faster. Pregnancy, birth control pills and some medications make it much slower, so treat the numbers as optimistic in those cases.</p>
       <p><strong>Sustained-release pills</strong> (the SR toggle) follow studies of extended-release caffeine: about a quarter absorbs like a normal drink and the rest trickles in over many hours. It peaks around 4 hours after you take it, at roughly half the height of the same dose as coffee, and the tail lasts longer, so an afternoon pill can still be releasing at night. Brands differ, and Genius doesn't publish its exact curve.</p>
       <p><strong>The bedtime check</strong> covers your first 3 hours of sleep, not only the moment you lie down, so a pill still releasing after bed counts.</p>
       <p><strong>Drink buttons</strong> can be renamed, resized or marked SR in Settings.</p>
@@ -252,14 +254,6 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
         <button type="button" data-v="25" id="sensLow">Sensitive</button>
         <button type="button" data-v="50" id="sensMid">Typical</button>
         <button type="button" data-v="100" id="sensHigh">Tolerant</button>
-      </div>
-    </div>
-    <div class="row"><span id="lblHl">Clearance</span>
-      <div class="seg" id="hl" role="group" aria-labelledby="lblHl">
-        <button type="button" data-v="3.5" id="hlFast">Fast</button>
-        <button type="button" data-v="5" id="hlAvg">Average</button>
-        <button type="button" data-v="7" id="hlSlow">Slow</button>
-        <button type="button" data-v="10" id="hlVery">V. slow</button>
       </div>
     </div>
     <p class="sec">You</p>
@@ -303,7 +297,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     if (saved && Array.isArray(saved.doses) && typeof saved.bed === 'string') {
       state = saved;
       if (!state.limit) state.limit = 50;
-      if (!state.hl) state.hl = 5;
+      state.hl = 5; // clearance is fixed at the adult average; older saves may hold another value
     }
   } catch (e) {}
   if (!Array.isArray(state.presets)) state.presets = DEFAULT_PRESETS.map(function (p) { return { name: p.name, mg: p.mg, sr: p.sr }; });
@@ -526,11 +520,11 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       var bx0 = X(d.t), cx = fx[i], cy = Y(Math.min(d.mg, ymax));
       var active = activeI === i;
       if (Math.abs(cx - bx0) < 0.5) {
-        o.push('<line x1="' + bx0 + '" x2="' + bx0 + '" y1="' + Y(0) + '" y2="' + cy + '" stroke="var(--caff)" stroke-width="1.8" stroke-dasharray="1 3" stroke-linecap="round" pointer-events="none"/>');
+        o.push('<line x1="' + bx0 + '" x2="' + bx0 + '" y1="' + Y(0) + '" y2="' + cy + '" stroke="var(--stem)" stroke-width="1.6" stroke-dasharray="1 3" stroke-linecap="round" pointer-events="none"/>');
       } else {
         // straight up from the real time, then bend over to the bean
         var yTop = cy + 13, yBend = Math.min(Y(0), yTop + 26);
-        o.push('<path d="M' + bx0 + ' ' + Y(0) + 'L' + bx0 + ' ' + yBend + 'C' + bx0 + ' ' + (yBend - 14) + ' ' + cx + ' ' + (yTop + 12) + ' ' + cx + ' ' + yTop + '" fill="none" stroke="var(--caff)" stroke-width="1.8" stroke-dasharray="1 3" stroke-linecap="round" pointer-events="none"/>');
+        o.push('<path d="M' + bx0 + ' ' + Y(0) + 'L' + bx0 + ' ' + yBend + 'C' + bx0 + ' ' + (yBend - 14) + ' ' + cx + ' ' + (yTop + 12) + ' ' + cx + ' ' + yTop + '" fill="none" stroke="var(--stem)" stroke-width="1.6" stroke-dasharray="1 3" stroke-linecap="round" pointer-events="none"/>');
       }
       // number on the bean, a small "SR" above it for sustained release (keeps labels narrow)
       var lx = Math.min(L + pw - textW(String(d.mg)) / 2, Math.max(L + textW(String(d.mg)) / 2, cx));
@@ -539,8 +533,8 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       o.push('<g class="handle" data-i="' + i + '" tabindex="0" role="button" aria-label="Drink: ' + d.mg + ' mg at ' + fmt(d.t) + '. Arrow keys move it, Enter edits.">');
       o.push('<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="transparent"/>');
       o.push('<g transform="translate(' + cx + ' ' + cy + ') rotate(-28) scale(' + (active ? 1.25 : 1) + ')">');
-      o.push('<ellipse class="ring" cx="0" cy="0" rx="7.5" ry="10.5" fill="var(--bean)" stroke="' + (active ? 'var(--ink)' : 'var(--surface)') + '" stroke-width="2"/>');
-      o.push('<path d="M0 -9.5 C 3.6 -4 -3.6 4 0 9.5" fill="none" stroke="var(--bg)" stroke-width="1.7" stroke-linecap="round"/>');
+      o.push('<ellipse class="ring" cx="0" cy="0" rx="7.5" ry="10.5" fill="var(--bean)" stroke="var(--ink)" stroke-opacity="' + (active ? 1 : .85) + '" stroke-width="' + (active ? 2 : 1.4) + '"/>');
+      o.push('<path d="M0 -9.5 C 3.6 -4 -3.6 4 0 9.5" fill="none" stroke="var(--bean-crease)" stroke-width="1.6" stroke-linecap="round"/>');
       o.push('</g>');
       o.push('</g>');
     });
@@ -600,12 +594,11 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     }
 
     var sensName = { 25: 'Sensitive', 50: 'Typical', 100: 'Tolerant' }[state.limit] || state.limit + ' mg';
-    var hlName = { 3.5: 'Fast', 5: 'Average', 7: 'Slow', 10: 'Very slow' }[state.hl] || state.hl + ' h';
     $('resetBtn').disabled = !state.doses.length;
     $('nowBtn').disabled = state.doses.length >= MAXDRINKS;
-    $('setSum').textContent = 'Bed ' + fmt(bed) + ' · ' + sensName + ' · ' + hlName + (state.weight ? ' · ' + (state.wunit === 'kg' ? Math.round(state.weight) + ' kg' : Math.round(state.weight / LB) + ' lb') : '');
+    $('setSum').textContent = 'Bed ' + fmt(bed) + ' · ' + sensName + (state.weight ? ' · ' + (state.wunit === 'kg' ? Math.round(state.weight) + ' kg' : Math.round(state.weight / LB) + ' lb') : '');
 
-    [['sens', state.limit], ['hl', state.hl]].forEach(function (p) {
+    [['sens', state.limit]].forEach(function (p) {
       Array.prototype.forEach.call($(p[0]).querySelectorAll('button'), function (b) {
         b.setAttribute('aria-pressed', String(+b.getAttribute('data-v') === p[1]));
       });
@@ -892,10 +885,6 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   $('sens').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-v]'); if (!b) return;
     state.limit = +b.getAttribute('data-v'); save(); render(); syncSheet();
-  });
-  $('hl').addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-v]'); if (!b) return;
-    state.hl = +b.getAttribute('data-v'); save(); render(); syncSheet();
   });
 
   function showWeight() {
