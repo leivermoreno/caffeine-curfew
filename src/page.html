@@ -197,7 +197,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     <div class="info" id="info" hidden>
       <p><strong>The curve</strong> is caffeine in your body. Each dot is a drink: sideways is when, up and down is how much. The starting two are examples.</p>
       <p><strong>Add a drink</strong> by pressing and holding the chart at the hour you had it, then set the amount with the slider. Tap a dot to edit or remove it.</p>
-      <p><strong>Check any hour</strong> by sliding your finger across the chart. The card shows how much caffeine is in your body then, and how much you could still add at that hour and sleep well. Tap the line to hide it.</p>
+      <p><strong>Check any hour</strong> by sliding your finger across the chart. The line normally sits on the current time and shows what's in your body right now. While you slide it follows your finger, and when you let go it glides back to now. Drinks taken close together fan out sideways so each stays tappable; the dotted line under each one still starts at its real time.</p>
       <p><strong>The dashed line</strong> is the biggest drink you can still add at each hour and sleep well. It drops as bedtime gets closer.</p>
       <p><strong>Sensitivity</strong> sets how much caffeine you can carry into bed: 25 mg if it hits you hard, 50 mg for most people, 100 mg if coffee after dinner never bothers you. These are rules of thumb, not medical limits.</p>
       <p><strong>Clearance</strong> is how fast your body removes it. Half is gone in about 5 hours for most adults (fast 3.5 h, slow 7 h, very slow 10 h). Smokers clear it faster. Pregnancy, birth control pills and some medications make it much slower.</p>
@@ -368,6 +368,54 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     return m <= 0 ? 0 : Math.min(MAXDOSE, Math.floor(m / 5) * 5);
   }
 
+  // width of a bean's label ("100 SR"), measured once per text
+  var labelW = {}, measureCtx = null;
+  function textW(txt) {
+    if (labelW[txt]) return labelW[txt];
+    try {
+      measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+      measureCtx.font = '600 12px Inter, system-ui, -apple-system, sans-serif';
+      labelW[txt] = measureCtx.measureText(txt).width;
+    } catch (e) { labelW[txt] = txt.length * 7; }
+    return labelW[txt];
+  }
+  // Beans whose bean+label boxes would touch on screen (plus a margin) are spread sideways
+  // around their shared centre, in time order. Clusters that bump into each other after
+  // spreading merge and spread again. The bean being dragged stays under the finger.
+  function fanOut(X, Y, ymax, L, pw) {
+    var M = 3, items = [], fixed = {};
+    state.doses.forEach(function (d, i) {
+      var w = Math.max(20, textW(String(d.mg)) + 4), cy = Y(Math.min(d.mg, ymax));
+      items.push({ i: i, x0: X(d.t), w: w, top: cy - (d.sr ? 40 : 31), bot: cy + 13, t: d.t });
+    });
+    var out = items.map(function (it) { return it.x0; });
+    if (drag) fixed[drag.i] = true;
+    var free = items.filter(function (it) { return !fixed[it.i]; });
+    var groups = free.map(function (it) { return [it]; });
+    function layout(g) {
+      g.sort(function (a, b) { return a.t - b.t || a.i - b.i; });
+      if (g.length === 1) { out[g[0].i] = g[0].x0; return; }
+      var total = g.reduce(function (a, it) { return a + it.w; }, 0) + M * (g.length - 1);
+      var centre = g.reduce(function (a, it) { return a + it.x0; }, 0) / g.length;
+      var left = Math.min(L + pw - total, Math.max(L, centre - total / 2));
+      g.forEach(function (it) { out[it.i] = left + it.w / 2; left += it.w + M; });
+    }
+    function hit(a, b) {
+      return Math.abs(out[a.i] - out[b.i]) < (a.w + b.w) / 2 + M && a.top < b.bot + M && b.top < a.bot + M;
+    }
+    for (var pass = 0; pass < 20; pass++) {
+      groups.forEach(layout);
+      var merged = false;
+      for (var a = 0; a < groups.length && !merged; a++)
+        for (var b = a + 1; b < groups.length && !merged; b++)
+          if (groups[a].some(function (p) { return groups[b].some(function (q) { return hit(p, q); }); })) {
+            groups[a] = groups[a].concat(groups[b]); groups.splice(b, 1); merged = true;
+          }
+      if (!merged) break;
+    }
+    return out;
+  }
+
   function render() {
     var LIMIT = bedLimit(), SMAX = singleMax(), DMAX = dayMax(), bed = bedHour(), xmax = bed + SLEEPWIN;
     state.doses.forEach(function (d) { d.t = Math.min(bed, Math.max(XMIN, d.t)); });
@@ -420,11 +468,6 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       o.push('<text class="halo" pointer-events="none" x="' + (X(bed) - 6) + '" y="' + (Y(SMAX) - 5) + '" text-anchor="end" style="fill:var(--warn)">max per dose · ' + SMAX + '</text>');
     }
 
-    var now = nowHour();
-    if (now > XMIN && now < bed) {
-      o.push('<line x1="' + X(now) + '" x2="' + X(now) + '" y1="' + (T + ph - 6) + '" y2="' + (T + ph) + '" stroke="var(--muted)" stroke-width="1.5" pointer-events="none"/>');
-      o.push('<text class="halo" pointer-events="none" x="' + X(now) + '" y="' + (T + ph - 9) + '" text-anchor="middle">now</text>');
-    }
 
     var path = pts.map(function (p, i) { return (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1); }).join('');
     o.push('<g clip-path="url(#plot)" pointer-events="none">');
@@ -456,12 +499,21 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     var cls = bedMg <= LIMIT ? 'good' : bedMg <= LIMIT * 2 ? 'warn' : 'bad';
     o.push('<circle cx="' + X(pk.t) + '" cy="' + Y(Math.min(bedMg, ymax)) + '" r="5" fill="var(--' + cls + ')" stroke="var(--surface)" stroke-width="2" pointer-events="none"/>');
 
+    var fx = fanOut(X, Y, ymax, L, pw);
     state.doses.forEach(function (d, i) {
-      var cx = X(d.t), cy = Y(Math.min(d.mg, ymax));
+      var bx0 = X(d.t), cx = fx[i], cy = Y(Math.min(d.mg, ymax));
       var active = activeI === i;
-      o.push('<line x1="' + cx + '" x2="' + cx + '" y1="' + Y(0) + '" y2="' + cy + '" stroke="var(--caff)" stroke-width="1.5" stroke-dasharray="1 3" pointer-events="none"/>');
-      var anchor = cx > L + pw - 30 ? 'end' : cx < L + 30 ? 'start' : 'middle';
-      o.push('<text class="lbl halo" pointer-events="none"' + (SMAX && d.mg > SMAX ? ' style="fill:var(--warn)"' : '') + ' x="' + cx + '" y="' + (cy - 18) + '" text-anchor="' + anchor + '">' + d.mg + (d.sr ? ' SR' : '') + '</text>');
+      if (Math.abs(cx - bx0) < 0.5) {
+        o.push('<line x1="' + bx0 + '" x2="' + bx0 + '" y1="' + Y(0) + '" y2="' + cy + '" stroke="var(--caff)" stroke-width="1.5" stroke-dasharray="1 3" pointer-events="none"/>');
+      } else {
+        // straight up from the real time, then bend over to the bean
+        var yTop = cy + 13, yBend = Math.min(Y(0), yTop + 26);
+        o.push('<path d="M' + bx0 + ' ' + Y(0) + 'L' + bx0 + ' ' + yBend + 'C' + bx0 + ' ' + (yBend - 14) + ' ' + cx + ' ' + (yTop + 12) + ' ' + cx + ' ' + yTop + '" fill="none" stroke="var(--caff)" stroke-width="1.5" stroke-dasharray="1 3" stroke-linecap="round" pointer-events="none"/>');
+      }
+      // number on the bean, a small "SR" above it for sustained release (keeps labels narrow)
+      var lx = Math.min(L + pw - textW(String(d.mg)) / 2, Math.max(L + textW(String(d.mg)) / 2, cx));
+      o.push('<text class="lbl halo" pointer-events="none"' + (SMAX && d.mg > SMAX ? ' style="fill:var(--warn)"' : '') + ' x="' + lx + '" y="' + (cy - 18) + '" text-anchor="middle">' + d.mg + '</text>');
+      if (d.sr) o.push('<text class="halo" pointer-events="none" x="' + lx + '" y="' + (cy - 31) + '" text-anchor="middle" style="fill:var(--caff);font-size:9px;font-weight:700;letter-spacing:.06em">SR</text>');
       o.push('<g class="handle" data-i="' + i + '" tabindex="0" role="button" aria-label="Drink: ' + d.mg + ' mg at ' + fmt(d.t) + '. Arrow keys move it, Enter edits.">');
       o.push('<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="transparent"/>');
       o.push('<g transform="translate(' + cx + ' ' + cy + ') rotate(-28) scale(' + (active ? 1.25 : 1) + ')">');
@@ -471,9 +523,11 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       o.push('</g>');
     });
 
-    // scrubber: stats for the hour under your finger
-    if (scrub !== null && !sheet) {
-      var st = Math.min(xmax, Math.max(XMIN, scrub)), sx = X(st), sv = level(st, -1, false);
+    // scrubber: rests on the current time; follows the finger while sliding
+    var nowT = nowHour(), atNow = scrub === null;
+    var scrT = atNow ? (nowT >= XMIN && nowT <= xmax ? nowT : null) : scrub;
+    if (scrT !== null && !sheet) {
+      var st = Math.min(xmax, Math.max(XMIN, scrT)), sx = X(st), sv = level(st, -1, false);
       var rows = [];
       var cap = Math.max(0, Math.min(SMAX || Infinity, dayLeft(-1)));
       if (st < bed) {
@@ -482,10 +536,10 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       }
       var bw = 156, bh = 43 + rows.length * 17, bx = Math.min(L + pw - bw, Math.max(L, sx - bw / 2)), by = T + 2;
       o.push('<g pointer-events="none">');
-      o.push('<line x1="' + sx + '" x2="' + sx + '" y1="' + T + '" y2="' + (T + ph) + '" stroke="var(--ink)" stroke-width="1"/>');
+      o.push('<line x1="' + sx + '" x2="' + sx + '" y1="' + T + '" y2="' + (T + ph) + '" stroke="var(--ink)" stroke-width="1"' + (atNow ? ' stroke-opacity=".6"' : '') + '/>');
       o.push('<circle cx="' + sx + '" cy="' + Y(Math.min(sv, ymax)) + '" r="4.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>');
       o.push('<rect x="' + bx + '" y="' + by + '" width="' + bw + '" height="' + bh + '" rx="9" fill="var(--bg)" stroke="var(--line)"/>');
-      o.push('<text x="' + (bx + 10) + '" y="' + (by + 17) + '" style="fill:var(--ink);font-weight:600;font-size:12px">' + fmt(st) + '</text>');
+      o.push('<text x="' + (bx + 10) + '" y="' + (by + 17) + '" style="fill:var(--ink);font-weight:600;font-size:12px">' + (atNow ? 'Now \u00b7 ' : '') + fmt(st) + '</text>');
       o.push('<text x="' + (bx + 10) + '" y="' + (by + 34) + '">In your body</text>');
       o.push('<text x="' + (bx + bw - 10) + '" y="' + (by + 34) + '" text-anchor="end" style="fill:var(--ink);font-weight:600">' + Math.round(sv) + ' mg</text>');
       rows.forEach(function (r, ri) {
@@ -555,6 +609,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     $('sheetPrimary').textContent = sheet.isNew ? 'Add' : 'Done';
   }
   function openSheet(i, isNew) {
+    stopGlide();
     sheet = { i: i, isNew: isNew }; scrub = null;
     var d = state.doses[i];
     sheetEl.className = 'sheet ' + (d.mg / (G.ymax || 300) < 0.5 ? 'at-top' : 'at-bottom');
@@ -653,6 +708,24 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     var el = svg.querySelector('.handle[data-i="' + i + '"]');
     if (el) el.focus({ preventScroll: true });
   }
+  // glide the scrubber back to the current time
+  var glide = 0;
+  function stopGlide() { if (glide) { cancelAnimationFrame(glide); glide = 0; } }
+  function returnToNow() {
+    stopGlide();
+    if (scrub === null) return;
+    var from = scrub, to = nowHour();
+    var reduce = false;
+    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (reduce || to < XMIN || to > G.xmax) { scrub = null; render(); return; }
+    var t0 = performance.now();
+    (function step(now) {
+      var p = Math.min(1, (now - t0) / 260), e = 1 - Math.pow(1 - p, 3);
+      scrub = from + (to - from) * e;
+      if (p >= 1) { scrub = null; glide = 0; render(); return; }
+      render(); glide = requestAnimationFrame(step);
+    })(t0);
+  }
   function cancelPress() {
     if (!press) return;
     clearTimeout(press.timer);
@@ -699,6 +772,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     e.preventDefault();
     cancelPress();
     press = { id: e.pointerId, x: e.clientX, y: e.clientY, el: null, timer: 0 };
+    if (!sheet) { stopGlide(); scrub = tAt(e.clientX); render(); }
     if (state.doses.length < MAXDRINKS) {
       var r = box.getBoundingClientRect(), ring = document.createElement('div');
       ring.className = 'press';
@@ -733,7 +807,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     if (scrubbing !== null && e.pointerId === scrubbing) { scrub = tAt(e.clientX); render(); return; }
     if (e.pointerType === 'mouse' && !e.buttons && !sheet && !drag) {
       var hs = tAt(e.clientX);
-      if (hs !== scrub) { scrub = hs; render(); }
+      if (hs !== scrub) { stopGlide(); scrub = hs; render(); }
     }
   });
   function pointerEnd(e) {
@@ -746,21 +820,20 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       return;
     }
     if (press && e.pointerId === press.id) {
-      var tx = press.x;
       cancelPress();
-      if (e.type !== 'pointerup') return;
-      if (sheet) { closeSheet(true); return; }
-      var tt = tAt(tx);
-      scrub = (scrub !== null && e.pointerType !== 'mouse' && Math.abs(scrub - tt) < 0.4) ? null : tt;
-      render();
+      if (sheet && e.type === 'pointerup') { closeSheet(true); return; }
+      if (e.pointerType !== 'mouse') returnToNow();
       return;
     }
-    if (scrubbing !== null && e.pointerId === scrubbing) scrubbing = null;
+    if (scrubbing !== null && e.pointerId === scrubbing) {
+      scrubbing = null;
+      if (e.pointerType !== 'mouse') returnToNow();
+    }
   }
   svg.addEventListener('pointerup', pointerEnd);
   svg.addEventListener('pointercancel', pointerEnd);
   svg.addEventListener('pointerleave', function (e) {
-    if (e.pointerType === 'mouse' && scrubbing === null && scrub !== null) { scrub = null; render(); }
+    if (e.pointerType === 'mouse' && scrubbing === null && scrub !== null) returnToNow();
   });
 
   svg.addEventListener('keydown', function (e) {
