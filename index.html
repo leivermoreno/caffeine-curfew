@@ -21,7 +21,7 @@ img { max-width: 100%; }
 <style>
 /* Layout: one phone screen, no scrolling. Readout on top, the chart takes all spare height, three button rows at the bottom. Drinks are added by press-and-hold on the chart. */
 :root {
-  /* single dark look by choice: espresso ground, crema ink, latte curve */
+  /* single dark look by choice: espresso ground, crema ink, violet caffeine curve, caramel beans */
   color-scheme: dark;
   --bg: #140E0A;
   --surface: #1F1611;
@@ -30,7 +30,10 @@ img { max-width: 100%; }
   --line: #3A2B21;
   --caff: #D9A066;
   --caff-fill: rgba(217, 160, 102, .15);
-  --bean: #B5763F;
+  --bean: #CC8A4B;
+  --level: #A797F0;
+  --level-fill: rgba(150, 132, 238, .22);
+  --limit: rgba(244, 232, 216, .72);
   --night: #A9B0EE;
   --night-fill: rgba(169, 176, 238, .09);
   --good: #7FCB9C;
@@ -81,6 +84,7 @@ svg text { font-family: var(--body); font-size: 11px; fill: var(--muted); font-v
 svg .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 svg .lbl { fill: var(--ink); font-weight: 600; font-size: 12px; }
 svg .nightlbl { fill: var(--night); font-weight: 600; }
+svg .limitlbl { fill: var(--ink); font-weight: 600; }
 .handle { cursor: grab; outline: none; }
 .handle:focus-visible .ring { stroke: var(--ink); }
 
@@ -479,7 +483,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 
     o.push('<rect x="' + X(bed) + '" y="' + T + '" width="' + (X(xmax) - X(bed)) + '" height="' + ph + '" fill="var(--night-fill)" pointer-events="none"/>');
     o.push('<line x1="' + X(bed) + '" x2="' + X(bed) + '" y1="' + T + '" y2="' + (T + ph) + '" stroke="var(--night)" stroke-width="1.5" pointer-events="none"/>');
-    o.push('<line x1="' + X(bed) + '" x2="' + X(xmax) + '" y1="' + Y(LIMIT) + '" y2="' + Y(LIMIT) + '" stroke="var(--night)" stroke-width="1" stroke-dasharray="2 3" pointer-events="none"/>');
+    o.push('<line x1="' + X(bed) + '" x2="' + X(xmax) + '" y1="' + Y(LIMIT) + '" y2="' + Y(LIMIT) + '" stroke="var(--limit)" stroke-width="1" stroke-dasharray="2 3" pointer-events="none"/>');
     if (SMAX && SMAX < ymax) {
       o.push('<line x1="' + L + '" x2="' + X(bed) + '" y1="' + Y(SMAX) + '" y2="' + Y(SMAX) + '" stroke="var(--warn)" stroke-width="1.2" stroke-dasharray="1 4" stroke-linecap="round" pointer-events="none"/>');
       o.push('<text class="halo" pointer-events="none" x="' + (X(bed) - 6) + '" y="' + (Y(SMAX) - 5) + '" text-anchor="end" style="fill:var(--warn)">max per dose · ' + SMAX + '</text>');
@@ -488,8 +492,8 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 
     var path = pts.map(function (p, i) { return (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1); }).join('');
     o.push('<g clip-path="url(#plot)" pointer-events="none">');
-    o.push('<path d="' + path + 'L' + X(xmax) + ' ' + Y(0) + 'L' + X(XMIN) + ' ' + Y(0) + 'Z" fill="var(--caff-fill)" stroke="none"/>');
-    o.push('<path d="' + path + '" fill="none" stroke="var(--caff)" stroke-width="2" stroke-linejoin="round"/>');
+    o.push('<path d="' + path + 'L' + X(xmax) + ' ' + Y(0) + 'L' + X(XMIN) + ' ' + Y(0) + 'Z" fill="var(--level-fill)" stroke="none"/>');
+    o.push('<path d="' + path + '" fill="none" stroke="var(--level)" stroke-width="2" stroke-linejoin="round"/>');
 
     var csr = activeI >= 0 ? !!state.doses[activeI].sr : false, cvals = [];
     var ccap = Math.min(SMAX || Infinity, dayLeft(activeI));
@@ -498,7 +502,7 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
     var anyRoom = cvals.some(function (p) { return p[1] > 0; });
     if (anyRoom) {
       var c = cvals.map(function (p, ci) { return (ci ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(Math.max(-ymax * 0.1, Math.min(ymax * 1.5, p[1]))).toFixed(1); });
-      o.push('<path d="' + c.join('') + '" fill="none" stroke="var(--night)" stroke-width="1.5" stroke-dasharray="5 4"/>');
+      o.push('<path d="' + c.join('') + '" fill="none" stroke="var(--limit)" stroke-width="1.5" stroke-dasharray="5 4"/>');
     }
     o.push('</g>');
     o.push('<text class="nightlbl halo" pointer-events="none" x="' + (X(bed) - 5) + '" y="' + (T + 12) + '" text-anchor="end">bed</text>');
@@ -509,23 +513,24 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
       var tl = Math.min(bed - 0.3, Math.max(XMIN + 0.3, cvals[li][0]));
       var yl = Math.min(ymax * 0.92, Math.max(ymax * 0.1, cvals[li][1]));
       var leftSide = X(tl) > L + pw * 0.45;
-      o.push('<text class="nightlbl halo" pointer-events="none" x="' + (X(tl) + (leftSide ? -8 : 8)) + '" y="' + (Y(yl) + 4) + '" text-anchor="' + (leftSide ? 'end' : 'start') + '">' + (activeI >= 0 ? 'max for this drink' : 'max you can add') + '</text>');
+      o.push('<text class="limitlbl halo" pointer-events="none" x="' + (X(tl) + (leftSide ? -8 : 8)) + '" y="' + (Y(yl) + 4) + '" text-anchor="' + (leftSide ? 'end' : 'start') + '">' + (activeI >= 0 ? 'max for this drink' : 'max you can add') + '</text>');
     }
 
     var pk = sleepPeak(), bedMg = pk.v;
     var cls = bedMg <= LIMIT ? 'good' : bedMg <= LIMIT * 2 ? 'warn' : 'bad';
     o.push('<circle cx="' + X(pk.t) + '" cy="' + Y(Math.min(bedMg, ymax)) + '" r="5" fill="var(--' + cls + ')" stroke="var(--surface)" stroke-width="2" pointer-events="none"/>');
 
+    var beanStart = o.length;
     var fx = fanOut(X, Y, ymax, L, pw);
     state.doses.forEach(function (d, i) {
       var bx0 = X(d.t), cx = fx[i], cy = Y(Math.min(d.mg, ymax));
       var active = activeI === i;
       if (Math.abs(cx - bx0) < 0.5) {
-        o.push('<line x1="' + bx0 + '" x2="' + bx0 + '" y1="' + Y(0) + '" y2="' + cy + '" stroke="var(--caff)" stroke-width="1.5" stroke-dasharray="1 3" pointer-events="none"/>');
+        o.push('<line x1="' + bx0 + '" x2="' + bx0 + '" y1="' + Y(0) + '" y2="' + cy + '" stroke="var(--caff)" stroke-width="1.8" stroke-dasharray="1 3" stroke-linecap="round" pointer-events="none"/>');
       } else {
         // straight up from the real time, then bend over to the bean
         var yTop = cy + 13, yBend = Math.min(Y(0), yTop + 26);
-        o.push('<path d="M' + bx0 + ' ' + Y(0) + 'L' + bx0 + ' ' + yBend + 'C' + bx0 + ' ' + (yBend - 14) + ' ' + cx + ' ' + (yTop + 12) + ' ' + cx + ' ' + yTop + '" fill="none" stroke="var(--caff)" stroke-width="1.5" stroke-dasharray="1 3" stroke-linecap="round" pointer-events="none"/>');
+        o.push('<path d="M' + bx0 + ' ' + Y(0) + 'L' + bx0 + ' ' + yBend + 'C' + bx0 + ' ' + (yBend - 14) + ' ' + cx + ' ' + (yTop + 12) + ' ' + cx + ' ' + yTop + '" fill="none" stroke="var(--caff)" stroke-width="1.8" stroke-dasharray="1 3" stroke-linecap="round" pointer-events="none"/>');
       }
       // number on the bean, a small "SR" above it for sustained release (keeps labels narrow)
       var lx = Math.min(L + pw - textW(String(d.mg)) / 2, Math.max(L + textW(String(d.mg)) / 2, cx));
@@ -552,9 +557,11 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
         if (state.presets.some(function (p) { return p.sr; })) rows.push(['As SR pill', maxAt(st, true, -1)]);
       }
       var bw = 156, bh = 43 + rows.length * 17, bx = Math.min(L + pw - bw, Math.max(L, sx - bw / 2)), by = T + 2;
+      // bar and its dot sit under the beans; the card stays on top
+      o.splice(beanStart, 0,
+        '<line pointer-events="none" x1="' + sx + '" x2="' + sx + '" y1="' + T + '" y2="' + (T + ph) + '" stroke="var(--ink)" stroke-width="1"' + (atNow ? ' stroke-opacity=".6"' : '') + '/>',
+        '<circle pointer-events="none" cx="' + sx + '" cy="' + Y(Math.min(sv, ymax)) + '" r="4.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>');
       o.push('<g pointer-events="none">');
-      o.push('<line x1="' + sx + '" x2="' + sx + '" y1="' + T + '" y2="' + (T + ph) + '" stroke="var(--ink)" stroke-width="1"' + (atNow ? ' stroke-opacity=".6"' : '') + '/>');
-      o.push('<circle cx="' + sx + '" cy="' + Y(Math.min(sv, ymax)) + '" r="4.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>');
       o.push('<rect x="' + bx + '" y="' + by + '" width="' + bw + '" height="' + bh + '" rx="9" fill="var(--bg)" stroke="var(--line)"/>');
       o.push('<text x="' + (bx + 10) + '" y="' + (by + 17) + '" style="fill:var(--ink);font-weight:600;font-size:12px">' + (atNow ? 'Now \u00b7 ' : '') + fmt(st) + '</text>');
       o.push('<text x="' + (bx + 10) + '" y="' + (by + 34) + '">In your body</text>');
